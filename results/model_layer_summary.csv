@@ -1,0 +1,14 @@
+Layer,Type,Output Shape,Parameters
+conv1a,Conv2D,"(None, 32, 32, 16)",432
+bn_conv1a,BatchNormalization,"(None, 32, 32, 16)",64
+conv1b,Conv2D,"(None, 32, 32, 16)","2,304"
+bn_conv1b,BatchNormalization,"(None, 32, 32, 16)",64
+conv2a,Conv2D,"(None, 16, 16, 20)","2,880"
+bn_conv2a,BatchNormalization,"(None, 16, 16, 20)",80
+conv2b,Conv2D,"(None, 16, 16, 20)","3,600"
+bn_conv2b,BatchNormalization,"(None, 16, 16, 20)",80
+conv3a,Conv2D,"(None, 8, 8, 24)","4,320"
+bn_conv3a,BatchNormalization,"(None, 8, 8, 24)",96
+conv3b,Conv2D,"(None, 8, 8, 24)","5,184"
+bn_conv3b,BatchNormalization,"(None, 8, 8, 24)",96
+predictions,Dense,"(None, 10)",250

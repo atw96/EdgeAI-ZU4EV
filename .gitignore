@@ -1,0 +1,38 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build / tool caches
+*.log
+.Xil/
+.hbs/
+vivado*.jou
+vivado*.str
+
+# Vivado / HLS generated (rebuild from notebooks + tcl)
+vivado_project/
+notebooks/hls4ml_prj/
+
+# IDE / local
+.cursor/
+.vscode/
+.specstory/
+.DS_Store
+Thumbs.db
+
+# Chat / session artifacts
+*Chat History*
+chat_history*.md
+
+# Optional large duplicates
+deploy/*.bit.bin
+deploy/*.ltx
+
+# Board runtime (generated locally)
+deploy/cifar10_bench.npz

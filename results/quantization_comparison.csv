@@ -1,0 +1,3 @@
+Variant,Accuracy (%),Model Size (KB),Accuracy Drop (pp)
+FP32,81.05,141.7,0.00
+Q6,79.43,146.5,1.62

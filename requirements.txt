@@ -1,0 +1,39 @@
+# requirements.txt — Host PC (Linux, Python 3.7)
+# EdgeAI-ZU4EV development environment
+#
+# Install:
+#   conda create -n edgeai python=3.7
+#   conda activate edgeai
+#   pip install -r requirements.txt
+
+# ── Deep Learning ──────────────────────────────────────────────
+tensorflow==2.6.0
+keras==2.6.0
+
+# ── QKeras (quantisation-aware training) ──────────────────────
+# Compatible with TF 2.6 and hls4ml 0.6.x
+qkeras==0.9.0
+
+# ── hls4ml (HLS code generation) ──────────────────────────────
+# 0.6.0 is the version compatible with Vivado HLS 2020.1
+hls4ml[profiling]==0.6.0
+
+# ── Scientific computing ───────────────────────────────────────
+numpy>=1.19.5,<1.22.0   # TF 2.6 compatible range
+scipy>=1.7.0
+pandas>=1.3.0
+
+# ── Visualisation ─────────────────────────────────────────────
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# ── ML utilities ──────────────────────────────────────────────
+scikit-learn>=0.24.0
+
+# ── Jupyter ───────────────────────────────────────────────────
+jupyter>=1.0.0
+jupyterlab>=3.0.0
+ipywidgets>=7.6.0
+
+# ── Utilities ─────────────────────────────────────────────────
+tqdm>=4.62.0

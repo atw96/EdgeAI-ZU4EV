@@ -1,0 +1,5 @@
+Resource,Used,Available,Utilisation_%
+LUT,73815,88000,83.88
+FF,37958,176000,21.57
+DSP48E2,0,728,0.0
+BRAM_18K,26,252,10.32

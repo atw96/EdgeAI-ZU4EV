@@ -1,0 +1,39 @@
+{
+  "device": "xczu4ev-sfvc784-1-i",
+  "clock_mhz": 200.0,
+  "wrapped_top": "myproject_axi",
+  "resources": [
+    {
+      "Resource": "LUT",
+      "Used": 73815,
+      "Available": 88000,
+      "Utilisation_%": 83.88
+    },
+    {
+      "Resource": "FF",
+      "Used": 37958,
+      "Available": 176000,
+      "Utilisation_%": 21.57
+    },
+    {
+      "Resource": "DSP48E2",
+      "Used": 0,
+      "Available": 728,
+      "Utilisation_%": 0.0
+    },
+    {
+      "Resource": "BRAM_18K",
+      "Used": 26,
+      "Available": 252,
+      "Utilisation_%": 10.32
+    }
+  ],
+  "timing": {
+    "latency_min": 0,
+    "latency_max": 0,
+    "ii": 0,
+    "clock_ns": 5.0
+  },
+  "throughput_fps": 0,
+  "latency_ms": 0.0
+}

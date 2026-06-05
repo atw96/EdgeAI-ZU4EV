@@ -1,0 +1,20 @@
+{
+  "platform": "ARM Cortex-A53 x4 @ 1066 MHz",
+  "model": "model_int8.tflite",
+  "model_size_kb": 47.7,
+  "backend": "tflite_runtime",
+  "num_threads": 4,
+  "n_benchmark_runs": 100,
+  "avg_latency_ms": 12.2397,
+  "std_latency_ms": 0.0222,
+  "min_latency_ms": 12.209,
+  "throughput_fps": 81.7,
+  "accuracy_top1": 83.0,
+  "n_accuracy_imgs": 100,
+  "cpu_info": {
+    "platform": "ARM Cortex-A53 x4 @ 1066 MHz",
+    "processor": "ARM Cortex-A53",
+    "freq_mhz": 1066,
+    "num_cores": 4
+  }
+}

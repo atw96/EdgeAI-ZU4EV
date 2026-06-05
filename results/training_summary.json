@@ -1,0 +1,12 @@
+{
+  "model_name": "VGG_Lite_Student",
+  "architecture": "16-16 / 24-24 / 32-32 + GAP",
+  "total_params": 19450,
+  "test_accuracy": 0.8105000257492065,
+  "teacher_val_accuracy": 0.8848000168800354,
+  "best_ema_val_acc": 0.8119066455696202,
+  "final_train_val_gap": -0.1104953422235021,
+  "strategy": "KD+MixUp+CutMix+EMA+SGD-Cosine",
+  "epochs_student": 280,
+  "batch_size": 128
+}

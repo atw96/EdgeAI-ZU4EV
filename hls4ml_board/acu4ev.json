@@ -1,0 +1,89 @@
+{
+    "_comment": [
+        "EdgeAI-ZU4EV: Custom hls4ml board configuration for ALINX ACU4EV",
+        "Target device: Xilinx Zynq UltraScale+ XCZU4EV-1SFVC784I",
+        "",
+        "Installation:",
+        "  1. Find your hls4ml installation:",
+        "       python -c 'import hls4ml; print(hls4ml.__file__)'",
+        "  2. Copy this file to:",
+        "       <hls4ml_install>/backends/vivado/vivado_accelerator/boards/acu4ev.json",
+        "  3. Verify registration:",
+        "       python -c 'import hls4ml; print(hls4ml.templates.vivado.vivado_accelerator.VivadoAcceleratorConfig.get_supported_boards())'",
+        "",
+        "Usage in notebook:",
+        "       hls_model = hls4ml.converters.convert_from_keras_model(",
+        "           model,",
+        "           backend='VivadoAccelerator',",
+        "           board='acu4ev',",
+        "           clock_period=5,",
+        "           io_type='io_stream',",
+        "       )"
+    ],
+
+    "board_name": "acu4ev",
+    "part": "xczu4ev-sfvc784-1-i",
+    "clock_period": 5,
+    "clock_uncertainty": "12.5%",
+
+    "fpga_family": "zynquplus",
+    "fpga_subfamily": "xczu4ev",
+
+    "resources": {
+        "LUT"     : 88000,
+        "LUTRAM"  : 22400,
+        "FF"      : 176000,
+        "DSP48E2" : 728,
+        "BRAM_18K": 252,
+        "URAM"    : 0,
+        "IOB"     : 200
+    },
+
+    "interface": {
+        "default_io_type": "io_stream",
+        "axi_stream_width_bits": 64,
+        "axi_lite_base_address": "0xA0000000",
+        "interrupt_pin": "pl_ps_irq0"
+    },
+
+    "ps_config": {
+        "ps_type"       : "zynq_ultra_ps_e",
+        "ps_version"    : "3.3",
+        "hp_slave_port" : "S_AXI_HP0_FPD",
+        "gp_master_port": "M_AXI_HPM0_FPD",
+        "pl_clk0_mhz"  : 200,
+        "pl_clk1_mhz"  : 100,
+        "ps_ddr_size_gb": 4,
+        "pl_ddr_size_gb": 1
+    },
+
+    "dma_config": {
+        "ip_name"         : "axi_dma",
+        "ip_version"      : "7.1",
+        "mode"            : "simple",
+        "data_width_bits" : 64,
+        "max_burst_length": 256,
+        "addr_width"      : 40,
+        "include_mm2s"    : true,
+        "include_s2mm"    : true,
+        "include_sg"      : false
+    },
+
+    "pynq_config": {
+        "pynq_supported"  : true,
+        "pynq_version"    : "2.6",
+        "petalinux_version": "2020.1",
+        "python_version"  : "3.7",
+        "default_ip_name" : "cifar10_accel_0",
+        "default_dma_name": "axi_dma_0"
+    },
+
+    "notes": [
+        "ZU4EV has no URAM blocks (0 available)",
+        "VCU (H.264/H.265 codec) available but not used by HLS accelerator",
+        "PL DDR4 1GB 16-bit accessible via XDMA or soft MIG (not used here)",
+        "Default clock: pl_clk0=200MHz for inference, pl_clk1=100MHz for DMA ctrl",
+        "Vivado HLS 2020.1: use vivado_hls binary (NOT vitis_hls)",
+        "Part string is lowercase: xczu4ev-sfvc784-1-i (check with get_parts())"
+    ]
+}
