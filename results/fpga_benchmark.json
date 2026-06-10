@@ -1,0 +1,23 @@
+{
+  "platform": "ZU4EV FPGA (HLS + AXI-DMA devmem)",
+  "bench_npz": "cifar10_bench.npz",
+  "n_bench": 100,
+  "n_accuracy": 100,
+  "dma_latency_ms": {
+    "mean": 26.7624,
+    "std": 0.0278,
+    "min": 26.724,
+    "max": 26.8186
+  },
+  "e2e_latency_ms": {
+    "mean": 27.518,
+    "std": 0.0354,
+    "min": 27.4691,
+    "max": 27.5639
+  },
+  "accuracy_top1": 7.0,
+  "note_dma": "perf_counter MM2S/S2MM start to dual IOC; reset+clear IOC each run",
+  "hls_ip_latency_ms_csynth": 13.37,
+  "note_ip": "Pure HLS IP latency from myproject_axi_csynth.rpt (see hls_ip_latency.json)",
+  "note_e2e": "perf_counter includes soft_reset, buffer flush, DMA, busy-wait IOC"
+}

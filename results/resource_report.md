@@ -112,17 +112,34 @@ _(After Vivado Place & Route — includes PS–PL interconnect, AXI DMA, SmartCo
 
 _(Measured on ALINX ACU4EV — FPGA via `scripts/board_infer.py`; CPU via `scripts/cpu_baseline.py`)_
 
-HLS IP cycle-level latency / II were not extracted in this demo; only end-to-end board timings are reported below.
+### 5.1 HLS IP Inference Latency *(csynth — pure PL compute)*
 
-| Metric | FPGA (ZU4EV HLS) | CPU (ARM A53 TFLite) |
-|--------|-----------------|---------------------|
-| **Avg Latency (ms)** | ~26 | 12.24 |
-| **Std Latency (ms)** | — | 0.022 |
-| **Min Latency (ms)** | — | 12.21 |
-| **Throughput (fps)** | ~38.5 | 81.7 |
-| **Top-1 Accuracy (%)** | — | 83.0 |
+Source: `myproject_axi_csynth.rpt` via `scripts/hls_metrics.py` → `results/hls_ip_latency.json`
 
-> FPGA端到端延迟含AXI-DMA数据搬运开销，HLS推理IP本身计算延迟更短；  
+| Metric | Value |
+|--------|-------|
+| **Clock** | 200 MHz (5.0 ns) |
+| **Latency (cycles)** | 2,668,780 – 2,673,941 |
+| **Latency (ms)** | **13.344 – 13.370** |
+| **Initiation Interval (cycles)** | 3,470 – 2,670,362 |
+| **Pipeline** | dataflow |
+
+Formula: `latency_ms = latency_cycles × 5.0 ns / 1e6`
+
+### 5.2 Board-Level Latency *(devmem + AXI-DMA — measured 2026-05-25)*
+
+Source: `scripts/board_benchmark.py` → `results/fpga_benchmark.json` (100 runs, `perf_counter`)
+
+| Metric | HLS IP (csynth) | Board DMA path | Board E2E | CPU (TFLite) |
+|--------|-----------------|----------------|-----------|--------------|
+| **Avg Latency (ms)** | **13.37** | 26.76 ± 0.03 | 27.52 ± 0.04 | 12.24 |
+| **Min Latency (ms)** | 13.344 | 26.724 | 27.469 | 12.21 |
+| **Throughput (fps)** | ~74.8 | ~37.4 | ~36.4 | 81.7 |
+| **Top-1 Accuracy (%)** | — | — | — | 83.0 |
+
+> **Board DMA path**: MM2S/S2MM start → dual IOC (`perf_counter`, excludes Python readout).  
+> **Board E2E**: includes `dma_soft_reset`, buffer `msync`, DMA, busy-wait IOC.  
+> **HLS IP ~13.4 ms** is roughly half of board DMA/E2E (~27 ms); the gap is PS–PL DMA orchestration and DDR transfer overhead.  
 > CPU基线为tflite_runtime单线程推理，未启用NEON加速。
 
 ---

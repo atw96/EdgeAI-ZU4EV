@@ -1,6 +1,7 @@
 {
   "device": "xczu4ev-sfvc784-1-i",
   "clock_mhz": 200.0,
+  "clock_ns": 5.0,
   "wrapped_top": "myproject_axi",
   "resources": [
     {
@@ -29,11 +30,15 @@
     }
   ],
   "timing": {
-    "latency_min": 0,
-    "latency_max": 0,
-    "ii": 0,
+    "latency_min": 2668780,
+    "latency_max": 2673941,
+    "latency_min_ms": 13.344,
+    "latency_max_ms": 13.37,
+    "ii_min": 3470,
+    "ii_max": 2670362,
     "clock_ns": 5.0
   },
-  "throughput_fps": 0,
-  "latency_ms": 0.0
+  "throughput_fps": 74.79,
+  "latency_ms": 13.37,
+  "source_report": "notebooks/hls4ml_prj/myproject_prj/solution1/syn/report/myproject_axi_csynth.rpt"
 }

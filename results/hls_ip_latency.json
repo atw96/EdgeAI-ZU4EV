@@ -1,0 +1,16 @@
+{
+  "metric": "HLS IP inference latency (csynth, myproject_axi)",
+  "device": "xczu4ev-sfvc784-1-i",
+  "clock_mhz": 200.0,
+  "clock_period_ns": 5.0,
+  "latency_min_cycles": 2668780,
+  "latency_max_cycles": 2673941,
+  "latency_min_ms": 13.344,
+  "latency_max_ms": 13.37,
+  "ii_min_cycles": 3470,
+  "ii_max_cycles": 2670362,
+  "pipeline_type": "dataflow",
+  "formula": "latency_ms = latency_cycles * clock_period_ns / 1e6",
+  "source_report": "notebooks/hls4ml_prj/myproject_prj/solution1/syn/report/myproject_axi_csynth.rpt",
+  "note": "Pure PL compute; excludes AXI-DMA and PS software overhead"
+}
