@@ -1,0 +1,28 @@
+{
+  "updated": "2026-06-12T13:45",
+  "slot32_out_pipeline": {
+    "status": "success",
+    "top1_pct": 10.0,
+    "mid4_nonzero": true,
+    "all_logits_nonzero": true,
+    "log": "results/slot32_out_board.log"
+  },
+  "gap_only_pipeline": {
+    "status": "done_accuracy_low",
+    "top1_pct": 10.0,
+    "strategy": "GAP on PL + Dense on PS, slot32 pack OUT_DIM=24 OUT_BYTES=92",
+    "log": "results/gap_only_board.log"
+  },
+  "gap_axi_csim_board_align": {
+    "status": "done",
+    "log": "results/gap_axi_csim_board.log",
+    "report": "results/gap_axi_csim_board_align.json",
+    "summary": {
+      "board_vs_exported_csim_gap_mae_mean": 0.222,
+      "exported_csim_vs_keras_gap_mae_mean": 1.1,
+      "writable_word_exact_match_pct": 18.3
+    },
+    "verdict": "板端 PL 与 exported AXI csim 一致（MAE≈0.22）；DMA 解码与 scale=256 正确。exported HLS GAP 与 Keras 参考差距大（MAE≈1.1），10% 准确率根因是 bit 内定点网络数值，而非 S2MM/PS 解码。"
+  },
+  "next": "重跑 GAP-only hls4ml convert+csynth，csim 对齐 Keras GAP（目标 MAE<0.3）后再出 bit；或对比 firmware 权重与 Keras"
+}

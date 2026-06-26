@@ -1,0 +1,6 @@
+{
+  "n_samples": 100,
+  "hls4ml_gap_ps_dense_top1_pct": 15.0,
+  "keras_vs_hls4ml_gap_mae_mean": 0.7074807751178741,
+  "config_source": "v17_qat_inline"
+}

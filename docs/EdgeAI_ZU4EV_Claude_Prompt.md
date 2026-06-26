@@ -402,5 +402,13 @@ README 结构：
 
 ---
 
+## 实现状态（2026-06，仓库实况）
+
+本项目已演进至 **v19 Route 1**：QKeras Q6 + hls4ml **1.3** + GAP-only PL + PS Dense；`input_qact` 内嵌 QAT 图 + `bit_exact=True`，**不再使用 Plan B 手调 PREC**。
+
+- 主流程脚本：`scripts/run_v19_qat_resume.sh`
+- 调试与精度现状：见仓库内 `docs/v19_route1_status.md`
+- 提交前清理：`bash scripts/cleanup_repo_for_git.sh`
+
 *本 Prompt 文档为 EdgeAI-ZU4EV 项目技术路线与交付物模板。*
 *硬件平台：ALINX ACU4EV / XCZU4EV-1SFVC784I*

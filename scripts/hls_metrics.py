@@ -80,11 +80,13 @@ def run_csim_check():
         raise FileNotFoundError(MODEL_H5)
 
     try:
-        from qkeras import QConv2D, QDense, quantized_bits
+        from qkeras import QActivation, QConv2D, QDense, quantized_bits, quantized_relu
         custom = {
             'QConv2D': QConv2D,
             'QDense': QDense,
+            'QActivation': QActivation,
             'quantized_bits': quantized_bits,
+            'quantized_relu': quantized_relu,
         }
     except ImportError:
         custom = {}
@@ -111,6 +113,21 @@ def run_csim_check():
     # hls4ml predict expects float [0,1]; internal quant matches training graph
     y_hls = hls_model.predict(X_f32)
     y_keras = model.predict(X_f32, verbose=0)
+
+    classes = [
+        'airplane', 'automobile', 'bird', 'cat', 'deer',
+        'dog', 'frog', 'horse', 'ship', 'truck',
+    ]
+    print('\n--- First 3 HLS raw outputs (check class 4-7) ---')
+    for i in range(min(3, len(y_hls))):
+        raw = np.asarray(y_hls[i]).flatten()
+        pred = int(np.argmax(raw))
+        mid = [round(float(raw[j]), 4) for j in range(4, 8)]
+        print(
+            '  sample %d label=%s pred=%s raw=%s mid4=%s'
+            % (i, classes[int(y_true[i])], classes[pred],
+               [round(float(v), 4) for v in raw], mid)
+        )
 
     hls_pred = np.argmax(y_hls, axis=1)
     keras_pred = np.argmax(y_keras, axis=1)

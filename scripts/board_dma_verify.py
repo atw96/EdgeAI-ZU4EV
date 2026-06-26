@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Single board DMA verification: GPIO + CMA + masked DMACR + PG021/driver init + loopback."""
+"""Board DMA verification: GPIO + CMA + DMACR/SA register checks only.
+
+NOTE: This bitstream wires MM2S -> HLS IP (not loopback). Short transfers
+(e.g. 64 B) pollute the HLS input stream and break inference. Do NOT run
+partial-frame DMA tests here; use board_infer.py after a fresh PL reload.
+"""
 import ctypes
 import hashlib
 import mmap
@@ -12,7 +17,6 @@ DMA = 0x80040000
 GPIO = 0x80090000
 SRC = 0x66C00000
 DST = 0x66C01000
-TEST_LEN = 64
 
 MM2S_CR, MM2S_SR = 0x00, 0x04
 MM2S_SA, MM2S_SA_MSB, MM2S_LEN = 0x18, 0x1C, 0x28
@@ -163,58 +167,15 @@ def main():
         print("\nVERDICT: MM2S_SA not writable — DMA lite / PL issue")
         return 4
 
-    print("\n--- Loopback transfer (%d B, driver-style init) ---" % TEST_LEN)
-    tx = bytes((i & 0xFF for i in range(TEST_LEN)))
-    lib = ctypes.CDLL("libc.so.6")
-
-    def flush_phys(phys, data):
-        fdw = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
-        mmw = mmap.mmap(fdw, len(data), mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=phys)
-        mmw[:] = data
-        ptr = ctypes.cast(ctypes.addressof(ctypes.c_char.from_buffer(mmw)), ctypes.c_void_p)
-        lib.msync(ptr, len(data), 4)
-        mmw.close()
-        os.close(fdw)
-
-    def read_phys(phys, n):
-        fdr = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
-        mmr = mmap.mmap(fdr, n, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=phys)
-        ptr = ctypes.cast(ctypes.addressof(ctypes.c_char.from_buffer(mmr)), ctypes.c_void_p)
-        lib.madvise(ptr, n, 4)
-        data = bytes(mmr[:n])
-        mmr.close()
-        os.close(fdr)
-        return data
-
-    flush_phys(SRC, tx)
-    flush_phys(DST, b"\x00" * TEST_LEN)
-
-    soft_reset(mm)
-    # Prime AXIS loopback FIFO (depth 16) — first transfer can slip by FIFO depth bytes.
-    driver_style_start(mm, SRC, DST, TEST_LEN)
-    poll_ioc(mm)
-    soft_reset(mm)
-
-    flush_phys(SRC, tx)
-    flush_phys(DST, b"\x00" * TEST_LEN)
-    soft_reset(mm)
-    driver_style_start(mm, SRC, DST, TEST_LEN)
-    print("  post-start SA=0x%08X LEN=0x%08X DA=0x%08X" % (
-        rd32(mm, MM2S_SA), rd32(mm, MM2S_LEN), rd32(mm, S2MM_DA)))
-    ok, sr_m, sr_s, reason = poll_ioc(mm)
-    print("  poll: %s MM2S_SR=0x%08X S2MM_SR=0x%08X" % (reason, sr_m, sr_s))
-    rx = read_phys(DST, TEST_LEN)
     mm.close()
     os.close(fd)
 
-    if ok and rx == tx:
-        print("\nVERDICT: DMA loopback OK")
-        return 0
-    if ok:
-        print("\nVERDICT: DMA IOC but data mismatch (HP/cache)")
-        return 5
-    print("\nVERDICT: DMA registers OK but transfer incomplete (stream/M_AXI)")
-    return 6
+    print("\n--- Stream transfer ---")
+    print("  SKIPPED: MM2S is wired to HLS IP (myproject_axi), not loopback.")
+    print("  Partial transfers pollute the 3072-word input frame. Run board_infer.py")
+    print("  immediately after FORCE_PL_RELOAD=1 board_load_only.sh instead.")
+    print("\nVERDICT: DMA register + CMA checks OK (no stream test)")
+    return 0
 
 
 if __name__ == "__main__":

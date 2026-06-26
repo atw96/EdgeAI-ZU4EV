@@ -7,7 +7,7 @@
 # Purpose : Auto-create Block Design with:
 #             - Zynq UltraScale+ MPSoC (PS)
 #             - AXI DMA (Simple mode)
-#             - HLS AI Accelerator IP (placeholder / real IP)
+#             - HLS AI Accelerator IP (myproject_axi — required, no placeholder)
 #             - AXI SmartConnect
 #             - Clock & Reset logic
 #
@@ -142,8 +142,7 @@ if {[file exists ${HLS_IP_REPO}]} {
     update_ip_catalog -rebuild
     puts "INFO: HLS IP repository added: ${HLS_IP_REPO}"
 } else {
-    puts "WARN: HLS IP repo not found at ${HLS_IP_REPO}. Will use placeholder."
-    puts "      Run Phase 1C (hls4ml synthesis) first, then re-run this script."
+    error "HLS IP repo not found at ${HLS_IP_REPO}. Run HLS export (myproject_axi) first."
 }
 
 ################################################################
@@ -239,10 +238,17 @@ set rst_pl [create_bd_cell -type ip \
     -vlnv xilinx.com:ip:proc_sys_reset:5.0 \
     proc_sys_reset_pl]
 
-# HLS myproject_axi uses 16-bit AXI4-Stream (TDATA_NUM_BYTES=2).
-# Keep DMA memory ports at 64-bit for PS DDR throughput; match stream ports to the accelerator.
+# HLS input stream is 16-bit; output may be 16- or 32-bit (OUTPUT_AXIS_BITS env).
 set HLS_AXIS_TDATA_BYTES 2
 set HLS_AXIS_TDATA_WIDTH [expr {${HLS_AXIS_TDATA_BYTES} * 8}]
+set HLS_OUTPUT_AXIS_BYTES 2
+if {[info exists ::env(HLS_OUTPUT_AXIS_BITS)] && $::env(HLS_OUTPUT_AXIS_BITS) ne ""} {
+    set obits $::env(HLS_OUTPUT_AXIS_BITS)
+    if {$obits eq "32"} {
+        set HLS_OUTPUT_AXIS_BYTES 4
+    }
+}
+set HLS_OUTPUT_AXIS_WIDTH [expr {${HLS_OUTPUT_AXIS_BYTES} * 8}]
 
 ################################################################
 # 4. AXI DMA — Simple Mode (64-bit mem, 16-bit AXI-Stream)
@@ -254,13 +260,19 @@ set axi_dma [create_bd_cell -type ip \
     -vlnv xilinx.com:ip:axi_dma:7.1 \
     axi_dma_0]
 
+# S2MM AXIS width: 32 when HLS outputs 32-bit native or via axis_dwidth_converter.
+set S2MM_AXIS_TDATA_WIDTH 32
+if {$HLS_OUTPUT_AXIS_BYTES eq 4} {
+    set S2MM_AXIS_TDATA_WIDTH ${HLS_OUTPUT_AXIS_WIDTH}
+}
+
 set_property -dict [list \
     CONFIG.c_include_sg          {0} \
     CONFIG.c_sg_include_stscntrl_strm {0} \
     CONFIG.c_m_axi_mm2s_data_width {32} \
     CONFIG.c_m_axis_mm2s_tdata_width ${HLS_AXIS_TDATA_WIDTH} \
     CONFIG.c_m_axi_s2mm_data_width {32} \
-    CONFIG.c_s_axis_s2mm_tdata_width ${HLS_AXIS_TDATA_WIDTH} \
+    CONFIG.c_s_axis_s2mm_tdata_width ${S2MM_AXIS_TDATA_WIDTH} \
     CONFIG.c_mm2s_burst_size     {256} \
     CONFIG.c_s2mm_burst_size     {256} \
     CONFIG.c_include_mm2s        {1} \
@@ -329,37 +341,27 @@ set_property -dict [list \
 
 ################################################################
 # 7. HLS AI Accelerator IP (myproject_axi: single AXIS in/out, ap_ctrl_none)
-#    If real IP exists: create_bd_cell from catalog
-#    Otherwise:        use AXI4-Stream Data FIFO as placeholder
+#    Required — abort if missing (no FIFO placeholder).
 ################################################################
 
 puts "INFO: Adding HLS AI Accelerator IP..."
 
-set hls_ip_found 0
 set hls_ip_vlnv ""
 
-# Only accept the single-stream wrapper IP; do not fall back to legacy multi-AXIS myproject.
+# Only accept the single-stream wrapper IP; legacy multi-AXIS myproject is rejected.
 set ip_list [get_ipdefs -filter {VLNV =~ *myproject_axi*}]
-if {[llength $ip_list] > 0} {
-    set hls_ip_vlnv [lindex $ip_list 0]
-    set hls_accel [create_bd_cell -type ip \
-        -vlnv ${hls_ip_vlnv} \
-        cifar10_accel_0]
-    set hls_ip_found 1
-    puts "INFO: Real HLS IP instantiated: ${hls_ip_vlnv}"
-} else {
-    puts "WARN: myproject_axi not found in IP catalog. Using AXI4-Stream FIFO placeholder."
-    puts "      Run Phase 1C (hls4ml export) and re-run this script."
-
-    set hls_accel [create_bd_cell -type ip \
-        -vlnv xilinx.com:ip:axis_data_fifo:2.0 \
-        cifar10_accel_0]
-
-    set_property -dict [list \
-        CONFIG.TDATA_NUM_BYTES ${HLS_AXIS_TDATA_BYTES} \
-        CONFIG.FIFO_DEPTH      {16} \
-    ] [get_bd_cells cifar10_accel_0]
+if {[llength $ip_list] == 0} {
+    error "myproject_axi not found in IP catalog at ${HLS_IP_REPO}.\
+ Run: vivado_hls -f build_prj.tcl with set_top myproject_axi, export=1, then re-run this script."
 }
+
+set hls_ip_vlnv [lindex $ip_list 0]
+set hls_accel [create_bd_cell -type ip \
+    -vlnv ${hls_ip_vlnv} \
+    cifar10_accel_0]
+puts "INFO: HLS IP instantiated: ${hls_ip_vlnv}"
+catch { upgrade_ip [get_ips cifar10_accel_0] }
+catch { report_ip_status [get_ips cifar10_accel_0] }
 
 ################################################################
 # 7A. External Board Ports
@@ -600,7 +602,7 @@ connect_bd_intf_net \
     $ps_hp_slave_intf
 
 # ── AXI4-Stream: DMA MM2S → HLS Accel input_stream ──
-# Prefer explicit myproject_axi names; keep generic fallbacks for placeholder FIFO.
+# Prefer explicit myproject_axi stream interface names.
 set accel_in_intf [first_existing_bd_intf_pin cifar10_accel_0 [list \
     input_stream \
     S_AXIS \
@@ -684,10 +686,32 @@ if {$DMA_STREAM_LOOPBACK} {
         [get_bd_intf_pins axi_dma_0/M_AXIS_MM2S] \
         $accel_in_intf
 
-    # ── AXI4-Stream: HLS Accel output_stream → DMA S2MM ──
-    connect_bd_intf_net \
-        $accel_out_intf \
-        [get_bd_intf_pins axi_dma_0/S_AXIS_S2MM]
+    if {$HLS_OUTPUT_AXIS_BYTES eq 4} {
+        connect_bd_intf_net \
+            $accel_out_intf \
+            [get_bd_intf_pins axi_dma_0/S_AXIS_S2MM]
+        puts "INFO: HLS ${HLS_OUTPUT_AXIS_WIDTH}-bit output -> DMA S2MM (no dwidth converter)"
+    } else {
+        # ── HLS 16-bit stream → 32-bit before S2MM ──
+        set axis_dw_s2mm [create_bd_cell -type ip \
+            -vlnv xilinx.com:ip:axis_dwidth_converter:1.1 \
+            axis_dw_s2mm]
+        set_property -dict [list \
+            CONFIG.S_TDATA_NUM_BYTES {2} \
+            CONFIG.M_TDATA_NUM_BYTES {4} \
+        ] [get_bd_cells axis_dw_s2mm]
+
+        connect_bd_net $pl_dma_clk_pin [get_bd_pins axis_dw_s2mm/aclk]
+        connect_bd_net \
+            [get_bd_pins proc_sys_reset_pl/peripheral_aresetn] \
+            [get_bd_pins axis_dw_s2mm/aresetn]
+
+        connect_bd_intf_net $accel_out_intf [get_bd_intf_pins axis_dw_s2mm/S_AXIS]
+        connect_bd_intf_net \
+            [get_bd_intf_pins axis_dw_s2mm/M_AXIS] \
+            [get_bd_intf_pins axi_dma_0/S_AXIS_S2MM]
+        puts "INFO: axis_dwidth_converter 16->32 on HLS output -> DMA S2MM"
+    }
 }
 
 # ── DMA Interrupts → PS IRQ (MM2S + S2MM) ──
@@ -822,17 +846,12 @@ puts "  Block Design created successfully!"
 puts "  Project : ${PROJECT_DIR}"
 puts "  BD Name : ${BD_NAME}"
 puts ""
-if {$hls_ip_found} {
-    puts "  HLS IP loaded : ${hls_ip_vlnv}"
-} else {
-    puts "  HLS IP loaded : placeholder FIFO"
-}
+puts "  HLS IP loaded : ${hls_ip_vlnv}"
 puts "  Stream width  : ${HLS_AXIS_TDATA_WIDTH}-bit (matches myproject_axi)"
 puts ""
 puts "  Next steps:"
-puts "  1. If HLS IP was placeholder, run hls4ml Phase 1C export first"
-puts "  2. One-shot synth+impl+bitstream:"
+puts "  1. One-shot synth+impl+bitstream:"
 puts "       vivado -mode batch -source tcl/run_impl_and_bitstream.tcl"
-puts "  3. Or manually: launch_runs synth_1; launch_runs impl_1 -to_step write_bitstream"
-puts "  4. Export package: source tcl/export_bitstream.tcl (also run by step 2 script)"
+puts "  2. Or manually: launch_runs synth_1; launch_runs impl_1 -to_step write_bitstream"
+puts "  3. Export package: source tcl/export_bitstream.tcl (also run by step 2 script)"
 puts "================================================================"

@@ -20,6 +20,12 @@ source /tools/Xilinx/Vivado/2020.1/settings64.sh
 
 cd "${REPO_WSL}"
 
+# Clear stale IP cache when forcing rebuild
+if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
+    echo "[3/4] FORCE_REBUILD=1 — clearing vivado_project/.cache/ip"
+    rm -rf "${REPO_WSL}/vivado_project/.cache/ip" 2>/dev/null || true
+fi
+
 # Stage 1: Recreate block design (fresh project)
 echo "[3/4] Creating block design (forces fresh project)..."
 vivado -mode batch -nojournal -nolog \
@@ -32,7 +38,7 @@ fi
 
 # Stage 2: Run synthesis + implementation + bitstream
 echo "[4/4] Running synth + impl + bitstream (this takes ~45-60 minutes)..."
-vivado -mode batch -nojournal -nolog \
+FORCE_REBUILD="${FORCE_REBUILD:-0}" vivado -mode batch -nojournal -nolog \
        -source tcl/run_impl_and_bitstream.tcl \
        2>&1 | tee impl_build.log
 

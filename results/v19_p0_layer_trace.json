@@ -1,0 +1,156 @@
+{
+  "n_samples": 1,
+  "mae_threshold": 0.05,
+  "method": {
+    "hls": "hls_model.trace() per HLS Model docs",
+    "keras": "manual submodels (get_ymodel_keras broken on QKeras 0.8.1, issue #265)",
+    "bn_fusion": "Keras bn_* compared to HLS conv* per profiling.rst"
+  },
+  "layer_mae": [
+    {
+      "keras_layer": "input_image",
+      "hls_layer": "input_image",
+      "mae": null,
+      "note": "missing in hls trace"
+    },
+    {
+      "keras_layer": "bn_conv1a",
+      "hls_layer": "conv1a",
+      "mae": 0.27320393616646377,
+      "keras_abs_max": 2.825284957885742,
+      "hls_abs_max": 3.3125
+    },
+    {
+      "keras_layer": "bn_conv1b",
+      "hls_layer": "conv1b",
+      "mae": 0.649228919391557,
+      "keras_abs_max": 2.705688714981079,
+      "hls_abs_max": 7.125
+    },
+    {
+      "keras_layer": "bn_conv2a",
+      "hls_layer": "conv2a",
+      "mae": 0.9845097685541788,
+      "keras_abs_max": 2.728172540664673,
+      "hls_abs_max": 5.0625
+    },
+    {
+      "keras_layer": "bn_conv2b",
+      "hls_layer": "conv2b",
+      "mae": 0.8000975323874229,
+      "keras_abs_max": 2.071272850036621,
+      "hls_abs_max": 4.5
+    },
+    {
+      "keras_layer": "bn_conv3a",
+      "hls_layer": "conv3a",
+      "mae": 1.072403097577573,
+      "keras_abs_max": 4.101810932159424,
+      "hls_abs_max": 5.625
+    },
+    {
+      "keras_layer": "bn_conv3b",
+      "hls_layer": "conv3b",
+      "mae": 1.827757173298778,
+      "keras_abs_max": 8.153328895568848,
+      "hls_abs_max": 2.625
+    },
+    {
+      "keras_layer": "relu_conv1a",
+      "hls_layer": "relu_conv1a",
+      "mae": 0.10323143005371094,
+      "keras_abs_max": 0.984375,
+      "hls_abs_max": 2.0
+    },
+    {
+      "keras_layer": "relu_conv1b",
+      "hls_layer": "relu_conv1b",
+      "mae": 0.06760311126708984,
+      "keras_abs_max": 0.984375,
+      "hls_abs_max": 1.25
+    },
+    {
+      "keras_layer": "relu_conv2a",
+      "hls_layer": "relu_conv2a",
+      "mae": 0.0943939208984375,
+      "keras_abs_max": 0.984375,
+      "hls_abs_max": 1.1875
+    },
+    {
+      "keras_layer": "relu_conv2b",
+      "hls_layer": "relu_conv2b",
+      "mae": 0.0869964599609375,
+      "keras_abs_max": 0.984375,
+      "hls_abs_max": 0.875
+    },
+    {
+      "keras_layer": "relu_conv3a",
+      "hls_layer": "relu_conv3a",
+      "mae": 0.058848063151041664,
+      "keras_abs_max": 0.984375,
+      "hls_abs_max": 0.875
+    },
+    {
+      "keras_layer": "relu_conv3b",
+      "hls_layer": "relu_conv3b",
+      "mae": 0.5039774576822916,
+      "keras_abs_max": 0.984375,
+      "hls_abs_max": 2.0
+    },
+    {
+      "keras_layer": "pool1",
+      "hls_layer": "pool1",
+      "mae": 0.10959625244140625,
+      "keras_abs_max": 0.984375,
+      "hls_abs_max": 1.25
+    },
+    {
+      "keras_layer": "pool2",
+      "hls_layer": "pool2",
+      "mae": 0.13712158203125,
+      "keras_abs_max": 0.984375,
+      "hls_abs_max": 0.875
+    },
+    {
+      "keras_layer": "gap",
+      "hls_layer": "gap",
+      "mae": 0.2750345865885417,
+      "keras_abs_max": 0.82470703125,
+      "hls_abs_max": 0.5
+    }
+  ],
+  "first_mae_gt_threshold": {
+    "keras_layer": "bn_conv1a",
+    "hls_layer": "conv1a",
+    "mae": 0.27320393616646377,
+    "keras_abs_max": 2.825284957885742,
+    "hls_abs_max": 3.3125
+  },
+  "gap_keras_vs_hls_predict_mae": 0.2750345865885417,
+  "gap_keras_vs_csim_mae_sample0": null,
+  "gap_hls_predict_vs_csim_mae_sample0": null,
+  "hls_trace_layers": [
+    "bn_conv1a",
+    "bn_conv1b",
+    "bn_conv2a",
+    "bn_conv2b",
+    "bn_conv3a",
+    "bn_conv3b",
+    "conv1a",
+    "conv1b",
+    "conv2a",
+    "conv2b",
+    "conv3a",
+    "conv3b",
+    "gap",
+    "pool1",
+    "pool2",
+    "relu_conv1a",
+    "relu_conv1b",
+    "relu_conv2a",
+    "relu_conv2b",
+    "relu_conv3a",
+    "relu_conv3b"
+  ],
+  "trace_enabled": true
+}

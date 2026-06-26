@@ -1,0 +1,11 @@
+{
+  "route": "route1_top1_primary",
+  "top1_pct": 12.0,
+  "min_top1_required": 75.0,
+  "top1_pass": false,
+  "mae_mean": 0.4405646854453646,
+  "max_mae_allowed": 0.35,
+  "mae_pass": false,
+  "mae_hard_fail": false,
+  "overall_pass": false
+}

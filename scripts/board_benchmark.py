@@ -15,21 +15,13 @@ Env:
     N_ACCURACY  accuracy images (default 100)
 """
 import json
-import mmap
 import os
-import struct
 import sys
 import time
-import ctypes
 
 import numpy as np
 
-DMA = 0x80040000
-SRC_PHYS = 0x66C00000
-DST_PHYS = 0x66C02000
-IN_BYTES = 6144
-OUT_BYTES = 20
-IOC = 0x1000
+from dma_infer_common import DevMemDma, IN_BYTES, SRC_PHYS, DST_PHYS, OUT_BYTES
 
 CLASS_NAMES = [
     'airplane', 'automobile', 'bird', 'cat', 'deer',
@@ -42,115 +34,27 @@ N_ACCURACY = int(os.environ.get('N_ACCURACY', '100'))
 OUT_JSON = os.environ.get('OUT_JSON', 'fpga_benchmark.json')
 
 
-class DmaInfer:
-    def __init__(self):
-        self._fd = os.open('/dev/mem', os.O_RDWR | os.O_SYNC)
-        self._lib = ctypes.CDLL('libc.so.6')
-
-    def close(self):
-        os.close(self._fd)
-
-    def _mmap(self, addr, size):
-        page = addr & ~0xFFF
-        span = (size + 0xFFF) & ~0xFFF
-        mm = mmap.mmap(
-            self._fd, span, mmap.MAP_SHARED,
-            mmap.PROT_READ | mmap.PROT_WRITE, offset=page,
-        )
-        return mm, addr & 0xFFF
-
-    def wr(self, addr, val):
-        mm, off = self._mmap(addr, 4)
-        mm[off:off + 4] = struct.pack('<I', val)
-        mm.close()
-
-    def rd(self, addr):
-        mm, off = self._mmap(addr, 4)
-        val = struct.unpack('<I', mm[off:off + 4])[0]
-        mm.close()
-        return val
-
-    def flush_write(self, phys, data):
-        mm, off = self._mmap(phys, len(data))
-        mm[off:off + len(data)] = data
-        ptr = ctypes.cast(
-            ctypes.addressof(ctypes.c_char.from_buffer(mm)), ctypes.c_void_p)
-        self._lib.msync(ptr, len(data), 4)
-        mm.close()
-
-    def inv_read(self, phys, n):
-        mm, off = self._mmap(phys, n)
-        ptr = ctypes.cast(
-            ctypes.addressof(ctypes.c_char.from_buffer(mm)), ctypes.c_void_p)
-        self._lib.madvise(ptr, n, 4)
-        data = bytes(mm[off:off + n])
-        mm.close()
-        return data
-
-    def soft_reset(self):
-        self.wr(DMA + 0x00, self.rd(DMA + 0x00) | 0x4)
-        self.wr(DMA + 0x30, self.rd(DMA + 0x30) | 0x4)
-        for _ in range(500):
-            if not (self.rd(DMA + 0x00) & 0x4) and not (self.rd(DMA + 0x30) & 0x4):
-                return True
-            time.sleep(0.002)
-        return False
-
-    def _clear_ioc(self):
-        """Write-1-to-clear IOC sticky bits on both channels."""
-        for sr in (DMA + 0x04, DMA + 0x34):
-            val = self.rd(sr)
-            if val & IOC:
-                self.wr(sr, IOC)
-
-    def _wait_ioc(self, timeout_s=5.0):
-        deadline = time.perf_counter() + timeout_s
-        while time.perf_counter() < deadline:
-            s2mm = self.rd(DMA + 0x34)
-            mm2s = self.rd(DMA + 0x04)
-            if (s2mm & IOC) and (mm2s & IOC):
-                return True
-        return False
-
+class DmaInfer(DevMemDma):
     def infer_once(self, payload, reset=True, time_dma=True):
-        """
-        Run one inference.
-
-        time_dma=True: perf_counter from DMA start to IOC (excludes buffer prep).
-        reset=True: include dma_soft_reset before each run.
-        Returns (scores_float32[10], latency_ms or None).
-        """
         assert len(payload) == IN_BYTES
         if reset:
             self.soft_reset()
-        self._clear_ioc()
+        self.clear_ioc()
         self.flush_write(SRC_PHYS, payload)
         self.flush_write(DST_PHYS, b'\x00' * OUT_BYTES)
 
         t0 = time.perf_counter() if time_dma else None
-        self.wr(DMA + 0x30, 0x1 | IOC)
-        self.wr(DMA + 0x48, DST_PHYS)
-        self.wr(DMA + 0x4C, 0)
-        self.wr(DMA + 0x58, OUT_BYTES)
-        self.wr(DMA + 0x00, 0x1 | IOC)
-        self.wr(DMA + 0x18, SRC_PHYS)
-        self.wr(DMA + 0x1C, 0)
-        self.wr(DMA + 0x28, IN_BYTES)
-
-        if not self._wait_ioc():
+        self.start_transfer()
+        ok, _, _, _ = self.wait_ioc()
+        if not ok:
             return None, None
 
         t1 = time.perf_counter() if time_dma else None
-        raw = self.inv_read(DST_PHYS, OUT_BYTES)
-        scores = np.array(
-            [struct.unpack_from('<h', raw, k * 2)[0] / 1024.0 for k in range(10)],
-            dtype=np.float32,
-        )
+        scores = np.array(self.decode_scores(), dtype=np.float32)
         lat_ms = (t1 - t0) * 1000.0 if time_dma else None
         return scores, lat_ms
 
     def infer_e2e(self, payload):
-        """Full path: reset + buffer write + DMA + IOC."""
         t0 = time.perf_counter()
         scores, _ = self.infer_once(payload, reset=True, time_dma=False)
         if scores is None:
@@ -178,6 +82,9 @@ def main():
     n_acc = min(N_ACCURACY, len(payloads))
     n_bench = min(N_BENCH, len(payloads))
     print('  Dataset : %s (%d samples)' % (BENCH_NPZ, len(payloads)))
+    print('  OUT_BYTES=%d OUT_LAYOUT=%s OUT_FIXED_SCALE=%s' % (
+        OUT_BYTES, os.environ.get('OUT_LAYOUT', 'int16'),
+        os.environ.get('OUT_FIXED_SCALE', '256')))
 
     dma = DmaInfer()
     try:

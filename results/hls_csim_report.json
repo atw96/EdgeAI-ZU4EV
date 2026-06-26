@@ -1,0 +1,23 @@
+{
+  "n_samples": 10,
+  "baseline": {
+    "hls_vs_keras_argmax_pct": 20.0,
+    "hls_top1_pct": 10.0,
+    "keras_top1_pct": 80.0,
+    "keras_fixed_input_top1_pct": 80.0,
+    "sample0_pred": "horse",
+    "sample0_mid4": [0.0205, 0.1123, 0.1348, 0.5713]
+  },
+  "tuned_gap_predictions_ap_fixed_16_8": {
+    "hls_top1_pct": 60.0,
+    "hls_vs_keras_argmax_pct": 70.0,
+    "sample0_pred": "cat",
+    "sample1_pred": "ship",
+    "sample2_pred": "ship"
+  },
+  "note": "Baseline uses default hls4ml config (ap_fixed<8,3> model default). Tuned raises gap/predictions to ap_fixed<16,8>.",
+  "diagnosis": "A-line confirmed: hls4ml conversion config is primary root cause. Board 6% tracks broken baseline model.",
+  "bit_vs_ip": "IP exported 2026-05-21, bit built 2026-05-26 — bit not stale",
+  "frame_lag_test": "rejected — identical scores for repeated same input, no 1-frame shift",
+  "next_action": "Apply tuned precision in notebook, re-csynth, export IP, Vivado rebuild bit, redeploy board"
+}

@@ -18,6 +18,15 @@ vivado*.str
 # Vivado / HLS generated (rebuild from notebooks + tcl)
 vivado_project/
 notebooks/hls4ml_prj/
+notebooks/hls4ml_prj.bak*/
+notebooks/hls4ml_prj_v19_*/
+notebooks/model_int8_qkeras.h5.bak*
+
+# Run artifacts (regenerate via scripts)
+results/*.log
+results/gap_csim_keras_align.json
+results/gap_axi_csim_board_align.json
+results/plan_b_*.png
 
 # IDE / local
 .cursor/

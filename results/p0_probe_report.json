@@ -1,0 +1,132 @@
+{
+  "timestamp": "2026-05-25T13:01:45",
+  "p0_1_s2mm_len": {
+    "ok": true,
+    "status": "IOC",
+    "mm2s_sr": 4098,
+    "s2mm_sr": 4098,
+    "s2mm_len_reg": 20,
+    "raw20_hex": "fef73ffefbfff5fd0000000000000000dafeb7fe",
+    "int16_0_3": [
+      -2050,
+      -449,
+      -5,
+      -523
+    ],
+    "int16_4_7": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "mechanism_hint": "A_full_20_bytes_check_wstrb"
+  },
+  "p0_2_clean_dst": {
+    "ok": true,
+    "status": "IOC",
+    "s2mm_len_reg": 20,
+    "hex64": "fef73ffefbfff5fdaaaaaaaaaaaaaaaadafeb7feaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "non_aa_offsets": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      16,
+      17,
+      18,
+      19
+    ],
+    "bytes_8_15": [
+      170,
+      170,
+      170,
+      170,
+      170,
+      170,
+      170,
+      170
+    ],
+    "bytes_16_19": [
+      218,
+      254,
+      183,
+      254
+    ],
+    "mid_verdict": "beat_not_written"
+  },
+  "p0_3_input_variation": {
+    "heads": [
+      {
+        "sample": 0,
+        "label": 3,
+        "int16_0_3": [
+          -2050,
+          -449,
+          -5,
+          -523
+        ],
+        "raw8_hex": "fef73ffefbfff5fd"
+      },
+      {
+        "sample": 1,
+        "label": 8,
+        "int16_0_3": [
+          -1095,
+          -1,
+          -529,
+          -21
+        ],
+        "raw8_hex": "b9fbffffeffdebff"
+      },
+      {
+        "sample": 2,
+        "label": 8,
+        "int16_0_3": [
+          -2373,
+          -15,
+          -2,
+          -643
+        ],
+        "raw8_hex": "bbf6f1fffeff7dfd"
+      }
+    ],
+    "logits_0_3_identical": false,
+    "hint": "output_varies_with_input \u2014 output path issue likely"
+  },
+  "p0_4_queue": {
+    "s2mm_only_ioc": false,
+    "elapsed_ms": 3001.81,
+    "s2mm_sr": 0,
+    "s2mm_len_reg": 20,
+    "hint": "no_queued_packet_on_s2mm_only"
+  },
+  "p0_5_bit": {
+    "bit_path": "/lib/firmware/cifar10_accel.bit",
+    "board_bit_md5": "caca17cc432f2878a63f3f096bf870f6",
+    "board_bit_size": 5977488,
+    "board_bit_mtime": "Mon May 25 13:00:02 2026",
+    "dmesg_fpga_tail": [
+      "[ 1210.606689] fpga_manager fpga0: writing cifar10_accel.bit to Xilinx ZynqMP FPGA Manager",
+      "[ 1578.587049] fpga_manager fpga0: writing cifar10_accel.bit to Xilinx ZynqMP FPGA Manager",
+      "[ 3139.558718] fpga_manager fpga0: writing cifar10_accel.bit to Xilinx ZynqMP FPGA Manager",
+      "[ 5369.467724] fpga_manager fpga0: writing cifar10_accel.bit to Xilinx ZynqMP FPGA Manager",
+      "[ 8852.647035] fpga_manager fpga0: writing cifar10_accel.bit to Xilinx ZynqMP FPGA Manager",
+      "[10513.430515] fpga_manager fpga0: writing cifar10_accel.bit to Xilinx ZynqMP FPGA Manager",
+      "[11893.091898] fpga_manager fpga0: writing cifar10_accel.bit to Xilinx ZynqMP FPGA Manager",
+      "[13700.640153] fpga_manager fpga0: writing cifar10_accel.bit to Xilinx ZynqMP FPGA Manager"
+    ],
+    "fpga_manager_state": "operating"
+  },
+  "p2_decision": {
+    "conclusion": "mechanism_A_wstrb_or_stale_dram",
+    "actions": [
+      "axis32_out or ILA TKEEP"
+    ]
+  },
+  "wsl_bit_md5": "caca17cc432f2878a63f3f096bf870f6",
+  "bit_md5_match": true
+}

@@ -1,0 +1,12 @@
+{
+  "n_samples": 100,
+  "full_model_top1_pct": 80.0,
+  "gap_ps_dense_top1_pct": 81.0,
+  "gap_stats": {
+    "min": 0.0,
+    "max": 0.984375,
+    "mean": 0.36861348152160645,
+    "abs_max": 0.984375
+  },
+  "model_h5": "/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude/notebooks/model_int8_qkeras.h5"
+}

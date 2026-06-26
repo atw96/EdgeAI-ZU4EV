@@ -1,0 +1,8 @@
+{
+  "old_bit_md5": "0a633643bb24b5ab489b70d418e69f91",
+  "new_bit_md5": "528ef0ee986c0c651da307f5c7e1153a",
+  "csim_top1_pct": 19.0,
+  "board_top1_pct": 16.0,
+  "min_top1_required": 75,
+  "pass": false
+}

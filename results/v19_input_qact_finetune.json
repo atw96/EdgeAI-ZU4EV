@@ -1,0 +1,36 @@
+{
+  "route": "input_qact_finetune",
+  "epochs": 40,
+  "lr": 0.01,
+  "best_val_acc": 0.7917325949367089,
+  "backup_h5": "/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude/notebooks/model_int8_qkeras.h5.bak_before_input_qact_20260620_203425",
+  "model_h5": "/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude/notebooks/model_int8_qkeras.h5",
+  "has_input_qact": true,
+  "bench": {
+    "bench_n": 100,
+    "full_top1_pct": 80.0,
+    "gap_ps_dense_top1_pct": 81.0
+  },
+  "history_tail": [
+    {
+      "epoch": 36,
+      "val_acc": 0.7882713607594937
+    },
+    {
+      "epoch": 37,
+      "val_acc": 0.789754746835443
+    },
+    {
+      "epoch": 38,
+      "val_acc": 0.7892602848101266
+    },
+    {
+      "epoch": 39,
+      "val_acc": 0.7917325949367089
+    },
+    {
+      "epoch": 40,
+      "val_acc": 0.7885680379746836
+    }
+  ]
+}
