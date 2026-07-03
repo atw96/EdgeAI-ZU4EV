@@ -7,7 +7,7 @@ exec > >(tee -a "$LOG") 2>&1
 log() { echo "[$(date '+%F %T')] $*"; }
 
 source ~/miniconda3/etc/profile.d/conda.sh
-conda activate edgeai_39
+conda activate edgeai_hls4ml13
 cd "$REPO"
 
 log "=== P0-2: hls4ml official layer trace ==="

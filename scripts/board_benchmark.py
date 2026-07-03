@@ -84,7 +84,7 @@ def main():
     print('  Dataset : %s (%d samples)' % (BENCH_NPZ, len(payloads)))
     print('  OUT_BYTES=%d OUT_LAYOUT=%s OUT_FIXED_SCALE=%s' % (
         OUT_BYTES, os.environ.get('OUT_LAYOUT', 'int16'),
-        os.environ.get('OUT_FIXED_SCALE', '256')))
+        os.environ.get('OUT_FIXED_SCALE', '1024')))
 
     dma = DmaInfer()
     try:
@@ -120,7 +120,7 @@ def main():
         print('\nAccuracy benchmark (%d images)...' % n_acc)
         preds = []
         for i in range(n_acc):
-            scores, _ = dma.infer_once(payloads[i], reset=False, time_dma=False)
+            scores, _ = dma.infer_once(payloads[i], reset=True, time_dma=False)
             if scores is None:
                 print('[ERROR] Accuracy run %d timeout' % i)
                 return 1

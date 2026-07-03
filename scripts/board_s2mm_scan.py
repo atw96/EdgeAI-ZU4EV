@@ -7,7 +7,7 @@ import sys
 import numpy as np
 
 from dma_infer_common import (
-    DevMemDma, DST_PHYS, DMA, IN_BYTES,
+    DevMemDma, DST_PHYS, DMA, IN_BYTES, OUT_BYTES,
     MM2S_CR, MM2S_SA, MM2S_SA_MSB, MM2S_LEN,
     S2MM_CR, S2MM_DA, S2MM_DA_MSB, S2MM_LEN,
 )
@@ -24,6 +24,14 @@ def main():
         npz = os.path.join(os.path.dirname(os.path.abspath(__file__)), npz)
     out_len = int(os.environ.get('S2MM_LEN_OVERRIDE', os.environ.get('OUT_SCAN_BYTES', '64')))
     scale = int(os.environ.get('OUT_FIXED_SCALE', '256'))
+
+    if out_len != OUT_BYTES and os.environ.get('ALLOW_PARTIAL_S2MM', '0') != '1':
+        print(
+            'ERROR: out_len=%d != OUT_BYTES=%d (set ALLOW_PARTIAL_S2MM=1 to override)'
+            % (out_len, OUT_BYTES),
+            file=sys.stderr,
+        )
+        return 2
 
     data = np.load(npz, allow_pickle=True)
     payload = bytes(data['payloads'][0])

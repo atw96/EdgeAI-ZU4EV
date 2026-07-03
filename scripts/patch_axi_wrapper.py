@@ -16,10 +16,28 @@ from slot32_layout import fmt_c_int_array, slot32_out_bytes, slot_beat_maps
 
 
 def parse_ap_fixed(typedef_line):
-    m = re.search(r'ap_fixed<(\d+)\s*,\s*(\d+)>', typedef_line)
+    m = re.search(r'ap_(?:fixed|ufixed)<(\d+)\s*,\s*(-?\d+)', typedef_line)
     if not m:
         raise RuntimeError('cannot parse ap_fixed from: %s' % typedef_line)
     return int(m.group(1)), int(m.group(2))
+
+
+def find_input_typedef_line(text):
+    for line in text.splitlines():
+        if 'typedef' not in line:
+            continue
+        if re.search(r'\binput_image_t\b', line):
+            return line
+        if re.search(r'\binput_t\b', line) and 'input_axi' not in line:
+            return line
+    raise RuntimeError('no input_t / input_image_t typedef in defines.h')
+
+
+def input_array_typedef_name(input_line):
+    m = re.search(r'\b(input_image_t|input_t)\b\s*;', input_line)
+    if m:
+        return m.group(1)
+    raise RuntimeError('cannot parse input array typedef name from: %s' % input_line)
 
 
 def parse_input_dims(text):
@@ -29,8 +47,15 @@ def parse_input_dims(text):
         w = int(re.search(r'#define\s+N_INPUT_3_1\s+(\d+)', text).group(1))
         c = int(m1.group(1))
         return c * h * w, c
-    m = re.search(r'typedef nnet::array<ap_fixed<\d+,\s*\d+>,\s*(\d+)\*1>\s+input_t', text)
-    channels = int(m.group(1)) if m else 3
+    channels = 3
+    for name in ('input_image_t', 'input_t'):
+        m = re.search(
+            r'typedef nnet::array<ap_(?:fixed|ufixed)<[^>]+>,\s*(\d+)\*1>\s+' + name,
+            text,
+        )
+        if m:
+            channels = int(m.group(1))
+            break
     words = int(os.environ.get('HLS_INPUT_WORDS', '3072'))
     return words, channels
 
@@ -47,7 +72,7 @@ def parse_output_macro(text):
         name, val = matches[-1]
         return name, int(val)
     m = re.search(
-        r'typedef nnet::array<ap_fixed<\d+,\s*\d+>,\s*(\d+)\*1>\s+result_t',
+        r'typedef nnet::array<ap_(?:fixed|ufixed)<[^>]+>,\s*(\d+)\*1>\s+result_t',
         text,
     )
     if m:
@@ -74,12 +99,12 @@ def main():
     # when DATAFLOW=1 pipelines input feed with myproject.
     if use_dataflow:
         input_stream_depth = int(os.environ.get('AXI_INPUT_STREAM_DEPTH', '1024'))
-        output_stream_depth = int(os.environ.get('AXI_OUTPUT_STREAM_DEPTH', '8'))
+        output_stream_depth = int(os.environ.get('AXI_OUTPUT_STREAM_DEPTH', '64'))
     else:
         # Sequential axis->myproject->axis still fills model_input (1024 packets)
         # before myproject reads; depth=2 deadlocks and S2MM never completes.
         input_stream_depth = int(os.environ.get('AXI_INPUT_STREAM_DEPTH', '1024'))
-        output_stream_depth = int(os.environ.get('AXI_OUTPUT_STREAM_DEPTH', '8'))
+        output_stream_depth = int(os.environ.get('AXI_OUTPUT_STREAM_DEPTH', '64'))
     if out_axis_bits not in (16, 32):
         print('ERROR: OUTPUT_AXIS_BITS must be 16 or 32', file=sys.stderr)
         return 1
@@ -88,8 +113,12 @@ def main():
         return 1
 
     text = DEFINES.read_text(encoding='utf-8')
-    input_line = next(l for l in text.splitlines() if 'input_t' in l and 'typedef' in l)
-    result_line = next(l for l in text.splitlines() if 'result_t' in l and 'typedef' in l)
+    input_line = find_input_typedef_line(text)
+    input_array_typedef = input_array_typedef_name(input_line)
+    result_line = next(
+        l for l in text.splitlines()
+        if re.search(r'\bresult_t\s*;', l) and 'typedef' in l
+    )
     in_w, in_i = parse_ap_fixed(input_line)
     out_w, out_i = parse_ap_fixed(result_line)
     output_macro, n_outputs = parse_output_macro(text)
@@ -98,9 +127,13 @@ def main():
     beat_lo, beat_hi, n_beats = slot_beat_maps(n_outputs)
 
     in_type = 'ap_fixed<%d, %d>' % (in_w, in_i)
-    out_type = 'ap_fixed<%d, %d>' % (out_w, out_i)
+    if 'ap_ufixed' in result_line:
+        out_type = 'ap_ufixed<%d, %d>' % (out_w, out_i)
+    else:
+        out_type = 'ap_fixed<%d, %d>' % (out_w, out_i)
     in_scale = 1 << (in_w - in_i)
     out_scale = 1 << (out_w - out_i)
+    bench_in_scale = int(os.environ.get('IN_FIXED_SCALE', '1024'))
 
     fw = HLS_DIR / 'firmware'
     if out_axis_bits == 32 and pack_mode == 'slot':
@@ -145,10 +178,10 @@ def main():
             typedef %(in_type)s input_pix_t;
             typedef %(out_type)s output_pix_t;
 
+            constexpr int kBenchInputScale = %(input_scale)d;
+
             input_pix_t bits_to_input(ap_uint<16> bits) {
-                input_pix_t value;
-                value = (ap_int<16>)(bits);
-                return value;
+                return input_pix_t(float((ap_int<16>)(bits)) / float(kBenchInputScale));
             }
 
             ap_uint<16> output_to_bits(output_pix_t value) {
@@ -222,6 +255,7 @@ def main():
             'out_words': out_words,
             'in_type': in_type,
             'out_type': out_type,
+            'input_scale': bench_in_scale,
             'n_beats': n_beats,
             'beat_lo': fmt_c_int_array(beat_lo),
             'beat_hi': fmt_c_int_array(beat_hi),
@@ -270,10 +304,10 @@ def main():
             typedef %(in_type)s input_pix_t;
             typedef %(out_type)s output_pix_t;
 
+            constexpr int kBenchInputScale = %(input_scale)d;
+
             input_pix_t bits_to_input(ap_uint<16> bits) {
-                input_pix_t value;
-                value = (ap_int<16>)(bits);
-                return value;
+                return input_pix_t(float((ap_int<16>)(bits)) / float(kBenchInputScale));
             }
 
             ap_uint<16> output_to_bits(output_pix_t value) {
@@ -338,6 +372,7 @@ def main():
             'out_words': out_words,
             'in_type': in_type,
             'out_type': out_type,
+            'input_scale': bench_in_scale,
         }
     elif out_axis_bits == 32:
         header = textwrap.dedent('''\
@@ -375,10 +410,10 @@ def main():
             typedef %(in_type)s input_pix_t;
             typedef %(out_type)s output_pix_t;
 
+            constexpr int kBenchInputScale = %(input_scale)d;
+
             input_pix_t bits_to_input(ap_uint<16> bits) {
-                input_pix_t value;
-                value = (ap_int<16>)(bits);
-                return value;
+                return input_pix_t(float((ap_int<16>)(bits)) / float(kBenchInputScale));
             }
 
             ap_uint<16> output_to_bits(output_pix_t value) {
@@ -450,6 +485,7 @@ def main():
             'out_words': out_words,
             'in_type': in_type,
             'out_type': out_type,
+            'input_scale': bench_in_scale,
         }
     else:
         header = textwrap.dedent('''\
@@ -486,10 +522,10 @@ def main():
             typedef %(in_type)s input_pix_t;
             typedef %(out_type)s output_pix_t;
 
+            constexpr int kBenchInputScale = %(input_scale)d;
+
             input_pix_t bits_to_input(ap_uint<16> bits) {
-                input_pix_t value;
-                value = (ap_int<16>)(bits);
-                return value;
+                return input_pix_t(float((ap_int<16>)(bits)) / float(kBenchInputScale));
             }
 
             ap_uint<16> output_to_bits(output_pix_t value) {
@@ -554,9 +590,10 @@ def main():
             'out_words': out_words,
             'in_type': in_type,
             'out_type': out_type,
+            'input_scale': bench_in_scale,
         }
 
-    if not use_dataflow and out_axis_bits == 32 and pack_mode == 'slot':
+    if not use_dataflow and out_axis_bits == 32 and pack_mode in ('slot', 'serial'):
         # Sequential top without DATAFLOW: isolate axis<->myproject in a
         # non-inlined helper so csynth does not monolith LLVM-opt the full net.
         sequential_helper = textwrap.dedent(
@@ -610,6 +647,10 @@ def main():
             1,
         )
 
+    if input_array_typedef != 'input_t':
+        cpp = cpp.replace('hls::stream<input_t>', 'hls::stream<%s>' % input_array_typedef)
+        cpp = cpp.replace('input_t packet', '%s packet' % input_array_typedef)
+
     (fw / 'myproject_axi.h').write_text(header, encoding='utf-8')
     (fw / 'myproject_axi.cpp').write_text(cpp, encoding='utf-8')
 
@@ -618,28 +659,38 @@ def main():
         'input_type': in_type,
         'result_type': out_type,
         'input_scale': in_scale,
+        'bench_input_scale': bench_in_scale,
         'output_scale': out_scale,
         'output_macro': output_macro,
         'output_axis_bits': out_axis_bits,
         'output_pack_mode': pack_mode,
-        'out_bytes': slot32_out_bytes(n_outputs) if (
-            out_axis_bits == 32 and pack_mode in ('serial', 'slot')
-        ) else 20,
+        'out_bytes': (
+            n_outputs * 4 if (out_axis_bits == 32 and pack_mode == 'serial')
+            else slot32_out_bytes(n_outputs) if (
+                out_axis_bits == 32 and pack_mode == 'slot'
+            ) else 20
+        ),
         'n_outputs': n_outputs,
     }, indent=2), encoding='utf-8')
 
     myproject_cpp = fw / 'myproject.cpp'
     mtext = myproject_cpp.read_text(encoding='utf-8')
     guard = '#pragma HLS INLINE off'
-    needle = 'void myproject(\n    hls::stream<input_t> &input_image,\n    hls::stream<result_t> &layer28_out\n) {\n\n    // hls-fpga-machine-learning insert IO'
     if not use_dataflow and guard not in mtext:
-        mtext = mtext.replace(
-            needle,
-            needle.replace('\n\n    //', '\n\n    %s\n    //' % guard),
-            1,
+        m_proj = re.search(
+            r'(void myproject\(\s*hls::stream<\w+> &input_image,\s*'
+            r'hls::stream<result_t> &layer\d+_out\s*\) \{)\s*\n\s*// hls-fpga-machine-learning insert IO',
+            mtext,
         )
-        myproject_cpp.write_text(mtext, encoding='utf-8')
-        print('Patched myproject.cpp: INLINE off (csynth guard)')
+        if m_proj:
+            needle = m_proj.group(0)
+            mtext = mtext.replace(
+                needle,
+                needle.replace('\n    //', '\n\n    %s\n    //' % guard, 1),
+                1,
+            )
+            myproject_cpp.write_text(mtext, encoding='utf-8')
+            print('Patched myproject.cpp: INLINE off (csynth guard)')
 
     print(
         'Patched AXI wrapper: input=%s (/%d) output=%s (/%d) axis_out=%d-bit pack=%s '

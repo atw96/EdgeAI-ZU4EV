@@ -2,8 +2,8 @@
 """
 Deep layer alignment: Keras vs hls4ml trace vs csim GAP.
 
-Tests BN fusion mappings (profiling.rst: Keras bn_* vs HLS conv*),
-auto-discovers best HLS partner per Keras layer, and tri-compares GAP.
+Route 1: bit_exact config from v19_hls_config_common (not notebook).
+Auto-discovers best HLS partner per Keras layer, tri-compares GAP.
 """
 import json
 import os
@@ -13,20 +13,20 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[1]
-NB = REPO / 'notebooks' / 'cifar10_hls4ml_synthesis.ipynb'
 MODEL_H5 = REPO / 'notebooks' / 'model_int8_qkeras.h5'
 NPZ = REPO / 'deploy' / 'cifar10_bench.npz'
 HLS_PRJ = REPO / 'notebooks' / 'hls4ml_prj'
 OUT_JSON = REPO / 'results' / 'v19_csim_keras_layer_align.json'
 OUT_MD = REPO / 'results' / 'v19_csim_keras_layer_align.md'
 
+sys.path.insert(0, str(REPO / 'scripts'))
+from v19_hls_config_common import convert_trace_model, load_gap_model  # noqa: E402
+
 N = int(os.environ.get('N_ALIGN', '20'))
 IN_SCALE = int(os.environ.get('IN_FIXED_SCALE', '1024'))
 GAP_DIM = int(os.environ.get('OUT_DIM', '24'))
 MAE_THRESH = float(os.environ.get('TRACE_MAE_THRESH', '0.05'))
 
-# Default fusion map per hls4ml profiling.rst
-# hls4ml 1.x trace lists both conv* and bn_conv*; compare bn→bn (not bn→conv).
 FUSION_MAP = {
     'bn_conv1a': 'bn_conv1a',
     'bn_conv1b': 'bn_conv1b',
@@ -38,12 +38,13 @@ FUSION_MAP = {
 
 KERAS_LAYER_ORDER = [
     'input_image',
-    'conv1a', 'bn_conv1a', 'relu_conv1a',
-    'conv1b', 'bn_conv1b', 'relu_conv1b', 'pool1',
-    'conv2a', 'bn_conv2a', 'relu_conv2a',
-    'conv2b', 'bn_conv2b', 'relu_conv2b', 'pool2',
-    'conv3a', 'bn_conv3a', 'relu_conv3a',
-    'conv3b', 'bn_conv3b', 'relu_conv3b',
+    'input_qact',
+    'conv1a', 'bn_conv1a', 'relu_conv1a', 'qact_conv1a',
+    'conv1b', 'bn_conv1b', 'relu_conv1b', 'qact_conv1b', 'pool1',
+    'conv2a', 'bn_conv2a', 'relu_conv2a', 'qact_conv2a',
+    'conv2b', 'bn_conv2b', 'relu_conv2b', 'qact_conv2b', 'pool2',
+    'conv3a', 'bn_conv3a', 'relu_conv3a', 'qact_conv3a',
+    'conv3b', 'bn_conv3b', 'relu_conv3b', 'qact_conv3b',
     'gap',
 ]
 
@@ -58,31 +59,6 @@ def load_bench(n):
         xs.append(x.reshape(1, 32, 32, 3))
         labels.append(int(data['labels'][i]))
     return np.vstack(xs), labels
-
-
-def load_gap_model():
-    import tensorflow as tf
-    from qkeras import QActivation, QConv2D, QDense, quantized_bits, quantized_relu
-
-    custom = {
-        'QConv2D': QConv2D, 'QDense': QDense, 'QActivation': QActivation,
-        'quantized_bits': quantized_bits, 'quantized_relu': quantized_relu,
-    }
-    model = tf.keras.models.load_model(str(MODEL_H5), custom_objects=custom, compile=False)
-    gap = tf.keras.Model(model.input, model.get_layer('gap').output, name='gaponly')
-    return gap
-
-
-def build_hls_config_from_notebook():
-    import json as _json
-    import os as _os
-
-    nb = _json.loads(NB.read_text(encoding='utf-8'))
-    _os.chdir(REPO / 'notebooks')
-    g = {'__name__': '__main__', '__file__': str(NB)}
-    for idx in (2, 4, 6):
-        exec(compile(''.join(nb['cells'][idx]['source']), str(NB) + ':%d' % idx, 'exec'), g)
-    return g['hls_config']
 
 
 def flatten(arr):
@@ -121,21 +97,19 @@ def keras_trace(gap_model, x):
 
 
 def hls_candidates(keras_layer, hls_keys):
-    """Candidate HLS layers for a Keras layer (BN fusion variants)."""
     cands = []
     if keras_layer in hls_keys:
         cands.append(keras_layer)
     if keras_layer in FUSION_MAP and FUSION_MAP[keras_layer] in hls_keys:
         cands.append(FUSION_MAP[keras_layer])
     if keras_layer.startswith('bn_'):
-        base = keras_layer[3:]  # conv1a
+        base = keras_layer[3:]
         if base in hls_keys:
             cands.append(base)
     if keras_layer.startswith('conv') and not keras_layer.startswith('bn'):
         bn = 'bn_' + keras_layer
         if bn in hls_keys:
             cands.append(bn)
-    # unique preserve order
     seen = set()
     uniq = []
     for c in cands:
@@ -164,7 +138,30 @@ def parse_defines():
             info['input_t'] = line.strip()
         if 'result_t' in line and 'typedef' in line:
             info['result_t'] = line.strip()
+        if 'input_qact' in line and 'typedef' in line:
+            info['input_qact_table_t'] = line.strip()
     return info
+
+
+def probe_input_quantization(gap_model, x_one):
+    """P1-lite: bench vs Keras input_qact output stats."""
+    raw = x_one
+    ktrace = keras_trace(gap_model, x_one)
+    qact = ktrace.get('input_qact')
+    stats = {
+        'bench_float_min': float(np.min(raw)),
+        'bench_float_max': float(np.max(raw)),
+        'bench_float_abs_max': float(np.max(np.abs(raw))),
+    }
+    if qact is not None:
+        q = flatten(qact)
+        stats.update({
+            'input_qact_abs_max': float(np.max(np.abs(q))),
+            'input_qact_unique_count': int(len(np.unique(np.round(q, 6)))),
+            'input_qact_min': float(np.min(q)),
+            'input_qact_max': float(np.max(q)),
+        })
+    return stats
 
 
 def main() -> int:
@@ -172,37 +169,23 @@ def main() -> int:
         print('ERROR: missing npz or model', file=sys.stderr)
         return 1
 
-    import hls4ml
-
     gap_model = load_gap_model()
-    hls_config = build_hls_config_from_notebook()
-    for lname in list(hls_config.get('LayerName', {}).keys()):
-        hls_config['LayerName'][lname]['Trace'] = True
-
     x, labels = load_bench(N)
     x_one = x[:1]
 
     tmp = REPO / 'notebooks' / 'hls4ml_prj_v19_layer_align_tmp'
-    print('trace convert ->', tmp)
-    hls_model = hls4ml.converters.convert_from_keras_model(
-        gap_model,
-        hls_config=hls_config,
-        output_dir=str(tmp),
-        backend='Vivado',
-        io_type='io_stream',
-        part='xczu4ev-sfvc784-1-i',
-        clock_period=5,
-    )
-    hls_model.compile()
+    print('trace convert (bit_exact) ->', tmp)
+    hls_model, hls_config = convert_trace_model(gap_model, tmp, trace=True)
+    print('bit_exact:', hls_config.get('BackendConfig', {}).get('bit_exact'))
 
     _, hls_trace_one = hls_model.trace(np.ascontiguousarray(x_one))
     hls_keys = sorted(hls_trace_one.keys()) if hls_trace_one else []
-    print('hls trace layers (%d):' % len(hls_keys), hls_keys[:8], '...')
+    print('hls trace layers (%d):' % len(hls_keys), hls_keys[:10], '...')
 
     ktrace = keras_trace(gap_model, x_one)
     csim_gaps = load_csim_gaps(N)
+    input_probe = probe_input_quantization(gap_model, x_one)
 
-    # --- per-layer mapping analysis (sample 0) ---
     layer_rows = []
     best_map = {}
     for kl in KERAS_LAYER_ORDER:
@@ -245,8 +228,6 @@ def main() -> int:
         None,
     )
 
-    # --- multi-sample GAP tri-compare ---
-    sys.path.insert(0, str(REPO / 'scripts'))
     os.environ.setdefault('DENSE_NPZ', str(REPO / 'deploy' / 'dense_head.npz'))
     from dma_infer_common import apply_ps_dense
 
@@ -305,12 +286,15 @@ def main() -> int:
 
     n_used = len(gap_rows)
     report = {
+        'route': 'route1_bitexact_trace',
         'n_samples': n_used,
         'in_scale': IN_SCALE,
+        'mae_threshold': MAE_THRESH,
         'defines': parse_defines(),
+        'input_quant_probe': input_probe,
         'hls_trace_layer_count': len(hls_keys),
         'hls_trace_layers': hls_keys,
-        'bn_fusion_note': 'Default: Keras bn_conv* vs HLS conv* (BN fused in HLS graph)',
+        'bn_fusion_note': 'Default: Keras bn_conv* vs HLS bn_conv* (bn→bn)',
         'layer_mapping_analysis': layer_rows,
         'first_bad_default_fusion': first_bad_fusion,
         'first_bad_best_mapping': first_bad_best,
@@ -323,6 +307,18 @@ def main() -> int:
             'top1_hls_predict_gap_ps_pct': 100.0 * top1_h / n_used,
             'top1_csim_gap_ps_pct': 100.0 * top1_c / n_used if csim_gaps else None,
         },
+        'diagnosis': {
+            'first_error_layer_default': first_bad_fusion['keras_layer'] if first_bad_fusion else None,
+            'first_error_layer_best': first_bad_best['keras_layer'] if first_bad_best else None,
+            'convert_vs_csim': (
+                'csim_tb_issue' if m_kh and m_kc and m_hc
+                and np.mean(m_kh) < MAE_THRESH and np.mean(m_kc) > MAE_THRESH
+                and np.mean(m_hc) < MAE_THRESH
+                else 'convert_issue' if m_kh and np.mean(m_kh) > MAE_THRESH
+                else 'accumulated_drift' if m_kh and np.mean(m_kh) > MAE_THRESH
+                else 'unknown'
+            ),
+        },
         'misclassified_keras_ok_csim_bad': miscls[:10],
         'samples': gap_rows,
     }
@@ -331,7 +327,13 @@ def main() -> int:
     OUT_JSON.write_text(json.dumps(report, indent=2), encoding='utf-8')
 
     md = [
-        '# v19 csim / Keras layer alignment',
+        '# v19 csim / Keras layer alignment (Route 1 bit_exact)',
+        '',
+        '## Input quant probe',
+        '',
+        '```json',
+        json.dumps(input_probe, indent=2),
+        '```',
         '',
         '## GAP tri-compare (%d samples)' % n_used,
         '',
@@ -359,17 +361,21 @@ def main() -> int:
         ))
     if first_bad_fusion:
         md.append('')
-        md.append('**First bad (default fusion):** `%s` MAE=%.4f' % (
+        md.append('**First bad (default bn→bn):** `%s` MAE=%.4f' % (
             first_bad_fusion['keras_layer'], first_bad_fusion['default_mae']))
     if first_bad_best:
         md.append('**First bad (best mapping):** `%s` MAE=%.4f → `%s`' % (
             first_bad_best['keras_layer'], first_bad_best['best_mae'], first_bad_best['best_hls']))
+    md.append('')
+    md.append('**Diagnosis:** `%s`' % report['diagnosis']['convert_vs_csim'])
     OUT_MD.write_text('\n'.join(md) + '\n', encoding='utf-8')
 
     print(json.dumps({
+        'input_probe': input_probe,
         'gap_tri_compare': report['gap_tri_compare'],
         'first_bad_fusion': first_bad_fusion,
         'first_bad_best': first_bad_best,
+        'diagnosis': report['diagnosis'],
         'mapping_fixes': [r['keras_layer'] for r in layer_rows if r.get('mapping_fixes_mae')],
     }, indent=2))
     print('written:', OUT_JSON)

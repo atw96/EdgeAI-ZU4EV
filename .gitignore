@@ -8,6 +8,32 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
+# Model weights (regenerate from notebooks)
+*.h5
+*.h5.bak*
+
+# Course / vendor PDFs (large, not source)
+doc/
+
+# SD card boot artifacts
+deploy/bin/
+sd_card_staging/
+
+# IDE / local（MCP + Cursor skills — 仅本地，不提交）
+.cursor/
+mcp-path-env-guard/
+mcps/
+
+# HLS generated copies under scripts/
+scripts/hls4ml_prj/
+scripts/hls4ml_prj_tuned/
+scripts/hls4ml_prj_v19*/
+scripts/logs/
+scripts/config.yaml
+scripts/saved_model/
+scripts/*.tar.gz
+scripts/sync_wsl_to_windows.sh
+
 # Build / tool caches
 *.log
 .Xil/
@@ -17,6 +43,7 @@ vivado*.str
 
 # Vivado / HLS generated (rebuild from notebooks + tcl)
 vivado_project/
+vivado_project.bak*/
 notebooks/hls4ml_prj/
 notebooks/hls4ml_prj.bak*/
 notebooks/hls4ml_prj_v19_*/
@@ -39,9 +66,21 @@ Thumbs.db
 *Chat History*
 chat_history*.md
 
-# Optional large duplicates
+# Optional large duplicates / generated deploy binaries
+deploy/*.bit
 deploy/*.bit.bin
+deploy/*.xsa
 deploy/*.ltx
-
-# Board runtime (generated locally)
 deploy/cifar10_bench.npz
+deploy/debug_nets.ltx
+deploy/system_wrapper.ltx
+
+# Reference factory Vivado (large, not part of main tree)
+ref_fact/
+
+# PetaLinux build tree
+petalinux_project/
+
+# Session / IDE artifacts
+agent-transcripts/
+.cursor/plans/

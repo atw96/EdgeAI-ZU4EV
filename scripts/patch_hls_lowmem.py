@@ -9,6 +9,7 @@ REPO = Path(__file__).resolve().parents[1]
 DENSE = REPO / 'notebooks' / 'hls4ml_prj' / 'firmware' / 'nnet_utils' / 'nnet_dense_latency.h'
 CONV = REPO / 'notebooks' / 'hls4ml_prj' / 'firmware' / 'nnet_utils' / 'nnet_conv2d_latency.h'
 BUILD = REPO / 'notebooks' / 'hls4ml_prj' / 'build_prj.tcl'
+PROJECT = REPO / 'notebooks' / 'hls4ml_prj' / 'project.tcl'
 
 MULT_PRAGMA = re.compile(
     r'\n\s*#pragma HLS ARRAY_PARTITION variable=mult[^\n]*\n',
@@ -46,26 +47,29 @@ def patch_data_buf() -> bool:
 
 
 def patch_max_size(max_size: int) -> bool:
-    text = BUILD.read_text(encoding='utf-8')
-    new_line = 'catch {config_array_partition -maximum_size %d}' % max_size
+    if not PROJECT.is_file():
+        print('ERROR: missing %s' % PROJECT, file=sys.stderr)
+        return False
+    text = PROJECT.read_text(encoding='utf-8')
+    new_line = 'set maximum_size %d' % max_size
     if new_line in text:
         return False
     new_text, n = re.subn(
-        r'catch \{config_array_partition -maximum_size \d+\}',
+        r'set maximum_size \d+',
         new_line,
         text,
         count=1,
     )
     if n == 0:
-        print('ERROR: config_array_partition not found in build_prj.tcl', file=sys.stderr)
+        print('ERROR: set maximum_size not found in project.tcl', file=sys.stderr)
         return False
-    BUILD.write_text(new_text, encoding='utf-8')
-    print('patched build_prj.tcl maximum_size -> %d' % max_size)
+    PROJECT.write_text(new_text, encoding='utf-8')
+    print('patched %s maximum_size -> %d' % (PROJECT.name, max_size))
     return True
 
 
 def main() -> int:
-    max_size = int(os.environ.get('HLS_ARRAY_PARTITION_MAX', '256'))
+    max_size = int(os.environ.get('HLS_ARRAY_PARTITION_MAX', '4096'))
     d = strip_mult_partition(DENSE, 'dense_latency')
     c = strip_mult_partition(CONV, 'conv2d_latency')
     b = patch_data_buf()

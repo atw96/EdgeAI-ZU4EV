@@ -5,7 +5,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 MYPROJECT = REPO / 'notebooks' / 'hls4ml_prj' / 'firmware' / 'myproject.cpp'
-PRAGMA = '    #pragma HLS DATAFLOW '
+PRAGMA = '    #pragma HLS DATAFLOW'
 COMMENT = '    // v14: DATAFLOW removed for resource fit (sequential layers)'
 
 

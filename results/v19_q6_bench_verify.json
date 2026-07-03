@@ -8,5 +8,5 @@
     "mean": 0.36861348152160645,
     "abs_max": 0.984375
   },
-  "model_h5": "/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude/notebooks/model_int8_qkeras.h5"
+  "model_h5": "notebooks/model_int8_qkeras.h5"
 }

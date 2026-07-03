@@ -2,7 +2,7 @@
   "route": "bitexact_route1",
   "hls4ml_version": "1.3.0",
   "bit_exact": true,
-  "model_h5": "/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude/notebooks/model_int8_qkeras.h5",
+  "model_h5": "notebooks/model_int8_qkeras.h5",
   "has_input_qact": true,
-  "hls_out": "/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude/notebooks/hls4ml_prj"
+  "hls_out": "notebooks/hls4ml_prj"
 }

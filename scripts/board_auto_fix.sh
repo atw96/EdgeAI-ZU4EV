@@ -14,11 +14,12 @@ echo "=== EdgeAI clean deploy @ ${BOARD_USER}@${BOARD_IP} ==="
 sshpass -p "$BOARD_PASS" ssh -o StrictHostKeyChecking=no "${BOARD_USER}@${BOARD_IP}" \
   "mkdir -p /tmp/edgeai_bench"
 
-OUT_SCALE="${OUT_FIXED_SCALE:-256}"
+OUT_SCALE="${OUT_FIXED_SCALE:-1024}"
 OUT_BYTES="${OUT_BYTES:-20}"
 OUT_LAYOUT="${OUT_LAYOUT:-int16}"
 OUT_DIM="${OUT_DIM:-10}"
-BOARD_ENV="OUT_FIXED_SCALE=${OUT_SCALE} OUT_BYTES=${OUT_BYTES} OUT_LAYOUT=${OUT_LAYOUT} OUT_DIM=${OUT_DIM}"
+OUTPUT_PACK_MODE="${OUTPUT_PACK_MODE:-slot}"
+BOARD_ENV="OUT_FIXED_SCALE=${OUT_SCALE} OUT_BYTES=${OUT_BYTES} OUT_LAYOUT=${OUT_LAYOUT} OUT_DIM=${OUT_DIM} OUTPUT_PACK_MODE=${OUTPUT_PACK_MODE} DENSE_NPZ=dense_head.npz"
 sshpass -p "$BOARD_PASS" scp -o StrictHostKeyChecking=no \
   "$REPO/scripts/board_infer.py" \
   "$REPO/scripts/board_benchmark.py" \
@@ -27,6 +28,7 @@ sshpass -p "$BOARD_PASS" scp -o StrictHostKeyChecking=no \
   "$REPO/scripts/board_load_only.sh" \
   "$REPO/scripts/dma_infer_common.py" \
   "$REPO/scripts/slot32_layout.py" \
+  "$REPO/scripts/board_fetch_gap.py" \
   "$REPO/deploy/cifar10_bench.npz" \
   "$REPO/deploy/cifar10_accel.bit" \
   "${BOARD_USER}@${BOARD_IP}:/tmp/edgeai_bench/"

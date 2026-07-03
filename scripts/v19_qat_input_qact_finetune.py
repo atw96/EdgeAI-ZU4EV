@@ -17,6 +17,7 @@ OUT_JSON = REPO / 'results' / 'v19_input_qact_finetune.json'
 
 
 def _conv_block_q(x, filters, prefix, k_q, b_q, a_q, layers, QConv2D, QActivation):
+    """QActivation(quantized_bits) -> hls4ml nnet::linear (same path as input_qact)."""
     for suffix in ('a', 'b'):
         name = f'{prefix}{suffix}'
         x = QConv2D(
@@ -28,12 +29,19 @@ def _conv_block_q(x, filters, prefix, k_q, b_q, a_q, layers, QConv2D, QActivatio
     return x
 
 
+def _parse_quant_alpha(raw):
+    if raw in ('1', '1.0'):
+        return 1
+    return raw
+
+
 def build_q6_input_qact(keras, layers, QConv2D, QDense, QActivation, quantized_bits, quantized_relu,
-                        name='VGG_Lite_Q6'):
-    k_q = quantized_bits(6, 0, alpha='auto_po2')
-    b_q = quantized_bits(6, 2, alpha='auto_po2')
-    a_q = quantized_relu(6)
-    inp_q = quantized_bits(6, 0, alpha='auto_po2')
+                        name='VGG_Lite_Q6', quant_alpha='auto_po2'):
+    alpha = _parse_quant_alpha(str(quant_alpha))
+    k_q = quantized_bits(6, 0, alpha=alpha)
+    b_q = quantized_bits(6, 2, alpha=alpha)
+    a_q = quantized_relu(6, 2)
+    inp_q = quantized_bits(6, 0, alpha=alpha)
     inp = keras.Input((32, 32, 3), name='input_image')
     x = QActivation(inp_q, name='input_qact')(inp)
     x = _conv_block_q(x, 16, 'conv1', k_q, b_q, a_q, layers, QConv2D, QActivation)
@@ -189,6 +197,8 @@ def main() -> int:
     ap.add_argument('--kd-temp', type=float, default=3.5)
     ap.add_argument('--skip-if-qact', action='store_true',
                     help='Skip if model already has input_qact layer')
+    ap.add_argument('--quant-alpha', default=os.environ.get('QAT_ALPHA', 'auto_po2'),
+                    help='QKeras quantizer alpha (use 1 for bit_exact fallback)')
     args = ap.parse_args()
 
     import tensorflow as tf
@@ -220,6 +230,7 @@ def main() -> int:
 
     student = build_q6_input_qact(
         keras, layers, QConv2D, QDense, QActivation, quantized_bits, quantized_relu,
+        quant_alpha=args.quant_alpha,
     )
     student.load_weights(str(MODEL_H5), by_name=True, skip_mismatch=True)
     print('Loaded weights (skip_mismatch) from', MODEL_H5)
@@ -242,6 +253,8 @@ def main() -> int:
 
     report = {
         'route': 'input_qact_finetune',
+        'quant_alpha': args.quant_alpha,
+        'activation_mode': 'quantized_relu_6_2_single_layer',
         'epochs': args.epochs,
         'lr': args.lr,
         'best_val_acc': best_val,

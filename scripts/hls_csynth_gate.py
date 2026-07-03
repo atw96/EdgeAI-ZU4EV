@@ -47,9 +47,17 @@ def main() -> int:
         return 2
     used = parse_report(rpt)
     pct = {k: 100.0 * used[k] / LIMITS[k] for k in used}
-    passed = all(pct[k] <= MAX_LUT_PCT for k in ('LUT', 'BRAM_18K', 'FF'))
+    bram_pass = used['BRAM_18K'] < LIMITS['BRAM_18K']
+    lut_pass = used['LUT'] < LIMITS['LUT']
+    ff_pass = used['FF'] < LIMITS['FF']
+    pct_pass = all(pct[k] <= MAX_LUT_PCT for k in ('LUT', 'BRAM_18K', 'FF'))
+    passed = pct_pass
     result = {
         'passed': passed,
+        'bram_pass': bram_pass,
+        'lut_pass': lut_pass,
+        'ff_pass': ff_pass,
+        'placement_pass': bram_pass,
         'used': used,
         'limits': LIMITS,
         'util_pct': {k: round(v, 2) for k, v in pct.items()},

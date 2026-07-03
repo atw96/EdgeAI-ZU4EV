@@ -23,16 +23,26 @@ source ~/miniconda3/etc/profile.d/conda.sh
 conda activate edgeai_39
 cd "$REPO"
 
-export OUTPUT_AXIS_BITS=32 OUTPUT_PACK_MODE=slot AXI_DATAFLOW=0
-export OUT_DIM=24 OUT_BYTES=92 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=256
-export GATE_WARN_ONLY=1
+export OUTPUT_AXIS_BITS=32 OUTPUT_PACK_MODE=serial AXI_DATAFLOW=0
+export OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=1024
+export IN_FIXED_SCALE=1024
+export BIT_EXACT=0
+export DENSE_NPZ="${REPO}/deploy/dense_head.npz"
 export DENSE_MULT_PARTITION_FACTOR=16
 export HLS_KERNEL_CYCLIC_FACTOR=4 HLS_RES_CYCLIC_FACTOR=4
 
 OLD=$(md5sum deploy/cifar10_accel.bit 2>/dev/null | awk '{print $1}')
 log "=== v19 bit+board (old MD5=$OLD) ==="
 
-log "--- re-patch AXI 32-bit slot (fix profiling default 16-bit pair) ---"
+log "--- re-patch AXI 32-bit slot + resource patches ---"
+export HLS_STREAM_DEPTH_PROFILE="${HLS_STREAM_DEPTH_PROFILE:-board_safe}"
+export HLS_ARRAY_PARTITION_MAX="${HLS_ARRAY_PARTITION_MAX:-4096}"
+export DENSE_MULT_PARTITION_FACTOR="${DENSE_MULT_PARTITION_FACTOR:-16}"
+export DENSE_BIAS_CYCLIC_FACTOR="${DENSE_BIAS_CYCLIC_FACTOR:-4}"
+python3 scripts/patch_hls_lowmem.py || true
+python3 scripts/patch_hls_dense_mult.py || true
+python3 scripts/patch_hls_dense_resource_antihang.py || true
+python3 scripts/patch_hls_mult_strategy.py || true
 python3 scripts/patch_hls_stream_depth.py
 python3 scripts/patch_hls_axi_top.py || true
 python3 scripts/patch_axi_wrapper.py
@@ -55,7 +65,16 @@ $VIVADO_HLS -f build_prj.tcl reset=1 csim=0 synth=1 cosim=0 validation=0 export=
 $VIVADO_HLS -f build_prj.tcl reset=0 csim=0 synth=0 cosim=0 validation=0 export=1
 cd "$REPO"
 conda activate edgeai_39
-python3 scripts/hls_csynth_gate.py || log "WARN: csynth resource gate"
+python3 scripts/hls_csynth_gate.py || GATE_RC=$?
+GATE_RC=${GATE_RC:-0}
+if [[ "$GATE_RC" -ne 0 ]]; then
+  BRAM_OK=$(python3 -c "import json; d=json.load(open('results/hls_csynth_gate.json')); print(d.get('bram_pass', d['used']['BRAM_18K']<256))")
+  if [[ "$BRAM_OK" != "True" ]]; then
+    log "ERROR: csynth BRAM gate failed — aborting before export"
+    exit 1
+  fi
+  log "WARN: LUT/FF pct gate failed but BRAM ok — continuing (Vivado blocker was BRAM UTLZ-1)"
+fi
 
 log "--- Vivado rebuild (~45-60 min) ---"
 source /tools/Xilinx/Vivado/2020.1/settings64.sh
@@ -68,12 +87,12 @@ log "New bit MD5=$NEW (was $OLD)"
 
 log "--- board deploy + benchmark N=$N_ACCURACY ---"
 ssh-keygen -f "$HOME/.ssh/known_hosts" -R "${BOARD_IP:-192.168.1.40}" 2>/dev/null || true
-OUT_DIM=24 OUT_BYTES=92 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=256 \
+OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=1024 \
   BOARD_IP="${BOARD_IP:-192.168.1.40}" BOARD_PASS="${BOARD_PASS:-root}" \
   bash scripts/board_auto_fix.sh 2>&1 | tee "${REPO}/results/v19_board_bench.log"
 
 conda activate edgeai_39
-N_ACCURACY="$N_ACCURACY" OUT_DIM=24 python3 scripts/gap_csim_ps_dense_accuracy.py || true
+N_ACCURACY="$N_ACCURACY" OUT_DIM=24 DENSE_NPZ="$DENSE_NPZ" python3 scripts/gap_csim_ps_dense_accuracy.py
 
 BOARD_TOP1=$(python3 -c "import json; print(json.load(open('results/gap_csim_ps_dense_accuracy.json'))['board_top1_pct'])" 2>/dev/null || echo nan)
 CSIM_TOP1=$(python3 -c "import json; print(json.load(open('results/gap_csim_ps_dense_accuracy.json'))['csim_ps_dense_top1_pct'])" 2>/dev/null || echo nan)

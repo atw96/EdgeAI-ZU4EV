@@ -43,6 +43,25 @@ if {$run_status ne "write_bitstream Complete!"} {
     }
 }
 
+# ── Step 1b: Export debug probes (ILA) — must match same impl as .bit ──
+set ltx_out "${DEPLOY_DIR}/${DESIGN_NAME}.ltx"
+set ltx_written 0
+catch {
+    open_run ${IMPL_RUN}
+    write_debug_probes -force -file ${ltx_out}
+    set ltx_written 1
+    puts "INFO: Debug probes written to ${ltx_out}"
+}
+if {!$ltx_written} {
+    set ltx_glob [glob -nocomplain "${PROJECT_DIR}/*.runs/${IMPL_RUN}/*.ltx"]
+    if {[llength $ltx_glob] > 0} {
+        file copy -force [lindex $ltx_glob 0] ${ltx_out}
+        puts "INFO: LTX copied from impl run to ${ltx_out}"
+    } else {
+        puts "WARN: No .ltx generated — BD may have no ILA/debug cores. Run add_dma_ila.tcl then re-impl."
+    }
+}
+
 # ── Step 2: Export Hardware Hand-off File (HWH) ─────────────
 # HWH file is needed by PYNQ to parse IP addresses and interrupt mappings
 set hwh_src [glob -nocomplain \

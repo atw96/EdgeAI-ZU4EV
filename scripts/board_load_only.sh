@@ -56,3 +56,7 @@ if [ "$(cat $STATE_FILE)" != "operating" ]; then
     exit 1
 fi
 echo "PL load OK"
+if [ -x /tmp/edgeai_bench/board_fix_hp0_width.py ] || [ -f /tmp/edgeai_bench/board_fix_hp0_width.py ]; then
+    echo "--- HP0 fabric width 32-bit (AR66295) ---"
+    python3 /tmp/edgeai_bench/board_fix_hp0_width.py || true
+fi

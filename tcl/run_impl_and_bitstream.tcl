@@ -127,6 +127,9 @@ if {!$SKIP_SYNTH} {
     puts "INFO: Skipping synthesis (SKIP_SYNTH=1)."
 }
 
+# ── Step 1b: No MARK_DEBUG (UG912 — breaks HLS AXIS opt_design Opt 31-67) ──
+puts "INFO: Skipping MARK_DEBUG; debug via System ILA in BD (add_dma_ila.tcl)."
+
 # ── Step 2: Implementation + Bitstream ───────────────────────────
 set impl_status [get_property STATUS [get_runs ${IMPL_RUN}]]
 if {!$FORCE_REBUILD && [string match {write_bitstream Complete!} $impl_status]} {
@@ -144,6 +147,19 @@ open_run ${IMPL_RUN}
 # ── Step 3: Quick timing / util report ─────────────────────────
 puts "\nINFO: Post-route timing summary:"
 catch {report_timing_summary -max_paths 1 -delay_type max -quiet}
+
+set timing_rpt [report_timing_summary -max_paths 1 -delay_type max -return_string -quiet]
+if {[regexp {Worst Negative Slack \(WNS\)\s*:\s*(-?\d+\.\d+)} $timing_rpt match wns]} {
+    puts "INFO: Worst Negative Slack (WNS): ${wns} ns"
+    if {$wns >= 0} {
+        puts "INFO: Timing PASSED (WNS >= 0)"
+    } else {
+        puts "WARN: Timing FAILED (WNS = ${wns} ns)"
+    }
+} else {
+    puts "WARN: Could not parse WNS from timing summary"
+}
+
 
 puts "\nINFO: Post-route utilization:"
 catch {report_utilization -quiet}

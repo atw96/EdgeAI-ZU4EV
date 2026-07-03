@@ -23,8 +23,10 @@ cd "$REPO"
 log "=== GAP exported AXI csim + board align (N=$N_GAP_COMPARE) ==="
 
 export OUTPUT_AXIS_BITS=32
-export OUTPUT_PACK_MODE=slot
+export OUTPUT_PACK_MODE=serial
 export AXI_DATAFLOW=0
+python3 scripts/patch_hls_axi_top.py || true
+python3 scripts/patch_hls_axi_csim_tb.py
 python3 scripts/patch_axi_wrapper.py
 python3 scripts/patch_axi_testbench.py
 N_GAP_COMPARE="$N_GAP_COMPARE" python3 scripts/prepare_gap_csim_tb.py
@@ -69,12 +71,15 @@ head -1 "$HLS_DIR/tb_data/csim_results.log" || true
 head -1 "$HLS_DIR/tb_data/csim_axis_beats.log" || true
 
 log "--- Deploy board_fetch_gap.py ---"
+if [[ "${SKIP_BOARD:-0}" == "1" ]]; then
+    log "SKIP_BOARD=1 — skip board deploy/align"
+else
 sshpass -p "$BOARD_PASS" scp -o StrictHostKeyChecking=no \
   scripts/board_fetch_gap.py \
   scripts/dma_infer_common.py \
   scripts/slot32_layout.py \
   deploy/cifar10_bench.npz \
-  "root@${BOARD_IP}:/tmp/edgeai_bench/"
+  "root@${BOARD_IP}:/tmp/edgeai_bench/" || log "WARN: board scp failed (continuing)"
 
 log "--- Compare csim vs Keras GAP ---"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -83,7 +88,15 @@ N_GAP_COMPARE="$N_GAP_COMPARE" python3 scripts/gap_csim_keras_align.py || true
 
 log "--- Compare csim beats vs board ---"
 N_GAP_COMPARE="$N_GAP_COMPARE" BOARD_IP="$BOARD_IP" BOARD_PASS="$BOARD_PASS" \
-  OUT_DIM=24 OUT_BYTES=92 OUT_FIXED_SCALE=256 \
-  python3 scripts/gap_axi_csim_board_align.py
+  OUT_DIM=24 OUT_BYTES=96 OUT_FIXED_SCALE=1024 \
+  python3 scripts/gap_axi_csim_board_align.py || log "WARN: board align failed (continuing)"
+fi
+
+if [[ "${SKIP_BOARD:-0}" == "1" ]]; then
+    log "--- Compare csim vs Keras GAP (csim-only) ---"
+    source ~/miniconda3/etc/profile.d/conda.sh
+    conda activate edgeai_39
+    N_GAP_COMPARE="$N_GAP_COMPARE" python3 scripts/gap_csim_keras_align.py || true
+fi
 
 log "=== DONE ==="

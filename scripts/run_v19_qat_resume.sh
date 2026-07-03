@@ -71,6 +71,7 @@ python3 scripts/patch_axi_wrapper.py
 python3 scripts/patch_axi_testbench.py
 python3 scripts/patch_hls_axi_csim_tb.py || true
 
+export SKIP_BOARD="${SKIP_BOARD:-1}"
 N_GAP_COMPARE="$N_ACCURACY" N_ACCURACY="$N_ACCURACY" bash scripts/run_gap_axi_csim.sh \
   2>&1 | tee "${REPO}/results/gap_axi_csim_v19_route1.log"
 

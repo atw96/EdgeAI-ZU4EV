@@ -3,8 +3,8 @@
   "epochs": 40,
   "lr": 0.01,
   "best_val_acc": 0.7917325949367089,
-  "backup_h5": "/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude/notebooks/model_int8_qkeras.h5.bak_before_input_qact_20260620_203425",
-  "model_h5": "/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude/notebooks/model_int8_qkeras.h5",
+  "backup_h5": "notebooks/model_int8_qkeras.h5.bak_before_input_qact_20260620_203425",
+  "model_h5": "notebooks/model_int8_qkeras.h5",
   "has_input_qact": true,
   "bench": {
     "bench_n": 100,

@@ -20,9 +20,10 @@ NPZ = REPO / 'deploy' / 'cifar10_bench.npz'
 
 BOARD_IP = os.environ.get('BOARD_IP', '192.168.1.40')
 BOARD_PASS = os.environ.get('BOARD_PASS', 'root')
-OUT_SCALE = int(os.environ.get('OUT_FIXED_SCALE', '256'))
+OUT_SCALE = int(os.environ.get('OUT_FIXED_SCALE', '1024'))
 OUT_DIM = int(os.environ.get('OUT_DIM', '24'))
-OUT_BYTES = int(os.environ.get('OUT_BYTES', '92'))
+OUT_BYTES = int(os.environ.get('OUT_BYTES', '96'))
+OUTPUT_PACK_MODE = os.environ.get('OUTPUT_PACK_MODE', 'slot').lower()
 
 sys.path.insert(0, str(REPO / 'scripts'))
 from slot32_layout import slot32_word_map, slot_beat_maps
@@ -44,8 +45,8 @@ def load_csim(n):
 
 def fetch_board(idx):
     env = (
-        'OUT_DIM=%d OUT_BYTES=%d OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=%d SAMPLE_IDX=%d'
-    ) % (OUT_DIM, OUT_BYTES, OUT_SCALE, idx)
+        'OUT_DIM=%d OUT_BYTES=%d OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=%d OUTPUT_PACK_MODE=%s SAMPLE_IDX=%d'
+    ) % (OUT_DIM, OUT_BYTES, OUT_SCALE, OUTPUT_PACK_MODE, idx)
     cmd = [
         'sshpass', '-p', BOARD_PASS,
         'ssh', '-o', 'StrictHostKeyChecking=no',
@@ -79,7 +80,13 @@ def main():
         return 1
     csim_gaps, csim_beats = load_csim(n)
 
-    beat_lo, beat_hi, n_beats = slot_beat_maps(OUT_DIM)
+    pack_serial = OUTPUT_PACK_MODE == 'serial'
+    if pack_serial:
+        n_beats = OUT_DIM
+        beat_lo = list(range(OUT_DIM))
+        beat_hi = [-1] * OUT_DIM
+    else:
+        beat_lo, beat_hi, n_beats = slot_beat_maps(OUT_DIM)
     samples = []
     gap_mae = []
     beat_match_pct = []
@@ -89,42 +96,57 @@ def main():
         board = fetch_board(i)
         raw = board['raw_hex']
         board_words = board_words_from_raw(raw)
-        csim_words, _ = csim_words_from_beats(csim_beats[i])
+        if pack_serial:
+            beat_cmp = []
+            slot_cmp = []
+            csim_beat_list = csim_beats[i]
+            for beat in range(n_beats):
+                bw = board_words[beat] if beat < len(board_words) else 0
+                cw = csim_beat_list[beat] if beat < len(csim_beat_list) else 0
+                beat_cmp.append({
+                    'beat': beat,
+                    'writable': True,
+                    'board_word': bw,
+                    'csim_word': cw,
+                    'match': bw == cw,
+                    'lo_idx': beat,
+                    'hi_idx': -1,
+                })
+        else:
+            csim_words, _ = csim_words_from_beats(csim_beats[i])
+            beat_cmp = []
+            for beat in range(n_beats):
+                bw = board_words[beat] if beat < len(board_words) else 0
+                cw = csim_words.get(beat, 0)
+                is_writable = beat_lo[beat] >= 0
+                beat_cmp.append({
+                    'beat': beat,
+                    'writable': is_writable,
+                    'board_word': bw,
+                    'csim_word': cw,
+                    'match': (bw == cw) if is_writable else None,
+                    'lo_idx': beat_lo[beat],
+                    'hi_idx': beat_hi[beat],
+                })
 
-        beat_cmp = []
-        writable_beats = [b for b in range(n_beats) if beat_lo[b] >= 0]
-        for beat in range(n_beats):
-            bw = board_words[beat] if beat < len(board_words) else 0
-            cw = csim_words.get(beat, 0)
-            is_writable = beat_lo[beat] >= 0
-            beat_cmp.append({
-                'beat': beat,
-                'writable': is_writable,
-                'board_word': bw,
-                'csim_word': cw,
-                'match': (bw == cw) if is_writable else None,
-                'lo_idx': beat_lo[beat],
-                'hi_idx': beat_hi[beat],
-            })
-
-        slot_cmp = []
-        for word_idx, logits in slot32_word_map(OUT_DIM).items():
-            bw = board_words[word_idx] if word_idx < len(board_words) else 0
-            cw = csim_words.get(word_idx, 0)
-            slot_cmp.append({
-                'word_idx': word_idx,
-                'logits': list(logits),
-                'board_word': bw,
-                'csim_word': cw,
-                'match': bw == cw,
-            })
+            slot_cmp = []
+            for word_idx, logits in slot32_word_map(OUT_DIM).items():
+                bw = board_words[word_idx] if word_idx < len(board_words) else 0
+                cw = csim_words.get(word_idx, 0)
+                slot_cmp.append({
+                    'word_idx': word_idx,
+                    'logits': list(logits),
+                    'board_word': bw,
+                    'csim_word': cw,
+                    'match': bw == cw,
+                })
 
         bg = np.array(board['gap_float'], dtype=np.float64)
         cg = np.array(csim_gaps[i], dtype=np.float64)
         mae = float(np.mean(np.abs(bg - cg)))
         gap_mae.append(mae)
-        bm = float(np.mean([r['match'] for r in beat_cmp if r['writable']]) * 100)
-        wm = float(np.mean([r['match'] for r in slot_cmp]) * 100)
+        bm = float(np.mean([r['match'] for r in beat_cmp if r.get('writable')]) * 100)
+        wm = float(np.mean([r['match'] for r in (slot_cmp if slot_cmp else beat_cmp)]) * 100)
         beat_match_pct.append(bm)
         word_match_pct.append(wm)
 
@@ -155,7 +177,8 @@ def main():
         'verdict': '',
         'samples': samples,
     }
-    if report['summary']['writable_slot_match_mean_pct'] > 80:
+    match_key = report['summary']['beat_word_match_mean_pct'] if pack_serial else report['summary']['writable_slot_match_mean_pct']
+    if match_key > 80:
         report['verdict'] = 'board DRAM words match exported AXI csim — decode OK, check float scale if gap_mae high'
     elif report['summary']['beat_word_match_mean_pct'] > 50:
         report['verdict'] = 'partial beat match — DMA slot or bit timing issue'
