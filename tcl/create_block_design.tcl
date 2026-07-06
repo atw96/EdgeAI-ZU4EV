@@ -179,8 +179,7 @@ set ps_config_pairs [list \
     CONFIG.PSU__USE__S_AXI_GP0              {0} \
     CONFIG.PSU__USE__S_AXI_GP2              {1} \
     CONFIG.PSU__USE__S_AXI_GP3              {0} \
-    CONFIG.PSU__USE__S_AXI_HP0_FPD          {0} \
-    CONFIG.PSU__USE__S_AXI_LPD              {1} \
+    CONFIG.PSU__USE__S_AXI_HP0_FPD          {1} \
     CONFIG.PSU__USE__S_AXI_HP1_FPD          {0} \
     CONFIG.PSU__USE__S_AXI_HP2_FPD          {0} \
     CONFIG.PSU__USE__S_AXI_HP3_FPD          {0} \
@@ -267,8 +266,8 @@ if {$HLS_OUTPUT_AXIS_BYTES eq 4} {
     set S2MM_AXIS_TDATA_WIDTH ${HLS_OUTPUT_AXIS_WIDTH}
 }
 
-# M_AXI 32-bit DMA; route via S_AXI_LPD (32-bit) when available to avoid HP0 64-bit upsize holes.
-set DMA_M_AXI_DATA_WIDTH 32
+# M_AXI 64-bit DMA to match HP0_FPD (64-bit) — avoids SmartConnect 32->64 sparse-write holes.
+set DMA_M_AXI_DATA_WIDTH 64
 
 set_property -dict [list \
     CONFIG.c_include_sg          {0} \
@@ -277,8 +276,8 @@ set_property -dict [list \
     CONFIG.c_m_axis_mm2s_tdata_width ${HLS_AXIS_TDATA_WIDTH} \
     CONFIG.c_m_axi_s2mm_data_width ${DMA_M_AXI_DATA_WIDTH} \
     CONFIG.c_s_axis_s2mm_tdata_width ${S2MM_AXIS_TDATA_WIDTH} \
-    CONFIG.c_include_mm2s_dre    {1} \
-    CONFIG.c_include_s2mm_dre    {1} \
+    CONFIG.c_include_mm2s_dre    {0} \
+    CONFIG.c_include_s2mm_dre    {0} \
     CONFIG.c_mm2s_burst_size     {256} \
     CONFIG.c_s2mm_burst_size     {256} \
     CONFIG.c_include_mm2s        {1} \
@@ -584,9 +583,10 @@ connect_bd_intf_net \
     [get_bd_intf_pins ps_axi_periph/M03_AXI] \
     [get_bd_intf_pins axi_uart_dbg/S_AXI]
 
-# ── Data Path: DMA → SmartConnect_data → PS HP0 (preferred over SAXIGP2)
+# ── Data Path: DMA → SmartConnect_data → PS HP0 (64-bit M_AXI matches HP0_FPD)
 set ps_hp_slave_intf [first_existing_bd_intf_pin zynq_ultra_ps_e_0 [list \
-    S_AXI_LPD \
+    S_AXI_HP0_FPD \
+    S_AXI_GP2 \
 ]]
 if {$ps_hp_slave_intf eq ""} {
     set available_ps_slave_intfs [existing_bd_intf_pins zynq_ultra_ps_e_0 [list S_AXI*]]

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Post-fpga_manager: set S_AXI_HP0_FPD fabric width to 32-bit (AR66295).
+"""Post-fpga_manager: set S_AXI_HP0_FPD fabric width to 64-bit (AR66295).
 
 When bitstream is loaded via Linux fpga_manager (not FSBL), AFIFM width
-registers may stay at 64-bit while PL DMA is 32-bit -> sparse DRAM writes.
+registers may default to 32-bit write while PL DMA M_AXI is 64-bit ->
+sparse DRAM writes (12 data + 12 holes). Force 64-bit read/write here.
 """
-import struct
 import sys
 
 from dma_infer_common import DevMemDma, require_pl_operating
@@ -25,9 +25,9 @@ def main():
     try:
         rd_before = dma.rd(AFIFM2_RDCTRL)
         wr_before = dma.rd(AFIFM2_WRCTRL)
-        # RD: bits[1:0]=00 -> 32-bit read; WR: bits[1:0]=10 -> 32-bit write (AR66295)
-        rd_after = (rd_before & ~0x3) | 0x0
-        wr_after = (wr_before & ~0x3) | 0x2
+        # RD/WR bits[1:0]=01 -> 64-bit (AR66295); required with DMA M_AXI 64-bit
+        rd_after = (rd_before & ~0x3) | 0x1
+        wr_after = (wr_before & ~0x3) | 0x1
         dma.wr(AFIFM2_RDCTRL, rd_after)
         dma.wr(AFIFM2_WRCTRL, wr_after)
         print(

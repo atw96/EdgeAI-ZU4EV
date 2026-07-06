@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-07-06T10:00:00+08:00",
+  "bit_md5": "46987907f8177883048b705fdf68c370",
+  "hwh_md5": "7576e1edbc8708cdaad98bbaa1f50baa",
+  "hwh_dma": {
+    "c_m_axi_s2mm_data_width": 64,
+    "c_s_axis_s2mm_tdata_width": 32,
+    "c_include_s2mm_dre": 0
+  },
+  "aa_prefill": {
+    "aa_word_indices": [],
+    "holes_eliminated": true
+  },
+  "csim_board_match": "24/24",
+  "top1_n10_pct": 90.0,
+  "top1_n100_pct": 82.0,
+  "target_met": true,
+  "runtime_fix": "board_fix_hp0_width.py AFIFM2 64-bit after fpga_manager load"
+}

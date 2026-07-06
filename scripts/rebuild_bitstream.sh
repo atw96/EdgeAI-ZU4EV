@@ -41,9 +41,10 @@ echo "[4/4] Running synth + impl + bitstream (this takes ~45-60 minutes)..."
 FORCE_REBUILD="${FORCE_REBUILD:-0}" vivado -mode batch -nojournal -nolog \
        -source tcl/run_impl_and_bitstream.tcl \
        2>&1 | tee impl_build.log
+IMPL_RC=${PIPESTATUS[0]}
 
 # Verify outputs
-if [[ -f deploy/cifar10_accel.bit && -f deploy/cifar10_accel.hwh ]]; then
+if [[ $IMPL_RC -eq 0 && -f deploy/cifar10_accel.bit && -f deploy/cifar10_accel.hwh ]]; then
     echo
     echo "================================================================"
     echo " BUILD SUCCESS"
@@ -54,7 +55,7 @@ if [[ -f deploy/cifar10_accel.bit && -f deploy/cifar10_accel.hwh ]]; then
     cp -v deploy/cifar10_accel.bit "${REPO_WIN}/deploy/"
     cp -v deploy/cifar10_accel.hwh "${REPO_WIN}/deploy/"
 else
-    echo "WARN: deploy/cifar10_accel.{bit,hwh} not found - check impl_build.log"
+    echo "ERROR: Vivado build failed (rc=${IMPL_RC}) or deploy/cifar10_accel.{bit,hwh} missing - check impl_build.log"
     ls -la deploy/ 2>/dev/null || true
     exit 1
 fi

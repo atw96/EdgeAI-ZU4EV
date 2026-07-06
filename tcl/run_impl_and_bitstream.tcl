@@ -88,6 +88,19 @@ if {[llength $bd_files] == 0} {
     error "system.bd not found. Run create_block_design.tcl first."
 }
 
+# Ensure wrapper top is set (BD regen can clear synth run top)
+set wrapper_v [file normalize [file join ${REPO_ROOT} vivado_project ${PROJECT_NAME}.srcs sources_1 bd system hdl system_wrapper.v]]
+if {[file exists ${wrapper_v}]} {
+    if {[llength [get_files -quiet ${wrapper_v}]] == 0} {
+        add_files -norecurse ${wrapper_v}
+    }
+    set_property top system_wrapper [get_filesets sources_1]
+    update_compile_order -fileset sources_1
+    puts "INFO: Synthesis top = system_wrapper"
+} else {
+    puts "WARN: system_wrapper.v not found at ${wrapper_v}"
+}
+
 # ── Ensure impl run exists ───────────────────────────────────────
 set synth_run_obj [get_runs -quiet ${SYNTH_RUN}]
 if {[llength $synth_run_obj] == 0} {

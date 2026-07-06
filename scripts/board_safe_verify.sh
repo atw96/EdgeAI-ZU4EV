@@ -23,6 +23,7 @@ SCP_FILES=(
   "$REPO/scripts/slot32_layout.py"
   "$REPO/scripts/board_fetch_gap.py"
   "$REPO/scripts/board_load_only.sh"
+  /scripts/board_fix_hp0_width.py
   "$REPO/deploy/cifar10_accel.bit"
   "$REPO/deploy/cifar10_bench.npz"
 )
@@ -38,7 +39,9 @@ echo "--- PL reload (FORCE_PL_RELOAD=1) ---"
 sshpass -p "$BOARD_PASS" ssh -o StrictHostKeyChecking=no "${BOARD_USER}@${BOARD_IP}" \
   "cp /tmp/edgeai_bench/cifar10_accel.bit /lib/firmware/cifar10_accel.bit && \
    chmod +x /tmp/edgeai_bench/board_load_only.sh && \
+  /scripts/board_fix_hp0_width.py
    FORCE_PL_RELOAD=1 sh /tmp/edgeai_bench/board_load_only.sh"
+  /scripts/board_fix_hp0_width.py
 
 BOARD_ENV="OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial BOARD_S2MM_SLOT_TIMING=0 SAMPLE_IDX=0"
 

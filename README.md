@@ -16,9 +16,9 @@
 
 ---
 
-## 当前调试状态（2026-07-03）
+## 当前状态（2026-07-06）
 
-### 仿真与模型（已达标，无需重训）
+### 仿真与模型（已达标）
 
 | 指标 | 结果 | 门槛 |
 |------|------|------|
@@ -26,22 +26,23 @@
 | GAP MAE | **0.026** | ≤0.35 |
 | 门控文件 | `results/v19_route1_gates.json` | `overall_pass: true` |
 
-### 板端（进行中：serial 输出 / DRAM 对齐）
+### 板端（已达标：DMA 64-bit + HP0 运行时 64-bit）
 
 | 指标 | 结果 | 目标 |
 |------|------|------|
-| ILA `output_stream` | **24 拍连续 serial**（HLS 出口正确） | — |
-| DRAM `board_fetch_gap` | **12 数据字 + 12 洞**（稀疏布局） | 24 连续非零字 |
-| N=100 Top-1 | **26%**（软件 hole 解码后；原 ~21%） | ~80%（对齐 csim） |
+| 0xAA 预填诊断 | **24 word 全数据，无洞** | `aa_word_indices: []` |
+| board vs csim GAP | **24/24 匹配** | 全维对齐 |
+| N=100 Top-1 | **82%** | ≥75%（对齐 csim） |
 | DMA 延迟 | ~57 ms，IOC 正常 | — |
 
-**根因（已锁定）：** 32-bit DMA M_AXI 经 64-bit SmartConnect / `S_AXI_HP0_FPD` 写入 DRAM，产生「2 数据 + 2 洞」布局；**非** HLS slot IP 或模型问题。
+**修复组合（两步缺一不可）：**
 
-**PL 未放弃：** 推理仍在 `cifar10_accel_0`（HLS serial）上运行，bit 经 `fpga_manager` 加载。
+1. **Bitstream**：`tcl/create_block_design.tcl` 中 `DMA_M_AXI_DATA_WIDTH=64`，DRE=0，DMA 经 `S_AXI_HP0_FPD`
+2. **运行时**：`scripts/board_fix_hp0_width.py` 在 `fpga_manager` 加载后将 AFIFM2 设为 **64-bit**（`bits[1:0]=01`）
 
-**推荐下一步：** 在 `psu_init` / **BOOT.BIN（FSBL）** 中固化 HP0 32-bit 宽度（AMD AR66295），SD 启动后验收 AA 预填无洞。
+**注意：** 旧版脚本将 HP0 设为 32-bit 会导致洞再现、Top-1 跌至 ~26%。每次 PL 重载后须执行 HP0 修复（`board_load_only.sh` 可自动调用）。
 
-详细诊断：`results/board_s2mm_freshness_diag.json`（B1：12 数据字 + 12 洞，HP0 位宽不匹配）
+详细记录：`docs/board_dma64_fix.md`、`results/board_dma64_verify_summary.json`
 
 ---
 
