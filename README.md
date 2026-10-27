@@ -6,43 +6,89 @@
 [![Python](https://img.shields.io/badge/Python-3.9+-yellow)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
 
-**端到端链路：** QKeras Q6 量化 → hls4ml 1.3 HLS（`bit_exact`）→ Vivado Block Design → PetaLinux 板端部署（devmem + AXI-DMA，**不用 PYNQ Overlay**）
+**端到端链路：** QKeras Q6 量化 → hls4ml 1.3（GAP 在 PL，Dense 在 PS）→ Vivado Block Design → PetaLinux（fpga_manager + devmem / AXI-DMA，**不用 PYNQ Overlay**）
 
 ---
 
 ## 项目概述
 
-在 **ALINX ACU4EV**（Xilinx Zynq UltraScale+ XCZU4EV）上实现 CIFAR-10 轻量 CNN 加速器。模型经 QKeras 量化后，由 hls4ml 导出 **GAP-only PL IP**，PS 侧完成 Dense 头，经 Vivado 集成并在 PetaLinux 2020.1 上推理验证。
+在 **ALINX ACU4EV**（Xilinx Zynq UltraScale+ XCZU4EV）上实现 CIFAR-10 学生网络加速器。通道数为 16/16/20/20/24/24。PL 只做卷积和全局平均池化，输出 24 维 GAP；PS 用一份小的 Dense 头（24→10）得到类别。
+
+当前推荐比特流是 **RC2**（A2-L 复用因子）。已知良好版和 RC1 仍保留在本地 `deploy/`，本仓库不收录 bitstream。
 
 ---
 
-## 当前状态（2026-07-06）
+## 当前状态（2026-10-27）
 
-### 仿真与模型（已达标）
+运行点：`PL0_REF_CTRL` 的 `DIVISOR0=10`、`DIVISOR1=1`，读回字 `0x01010a02`，PL 时钟 **149.9136 MHz**。上电后寄存器会回到 `DIVISOR0=15`（99.9424 MHz）。改分频必须先写寄存器、立刻重新加载同一份 bitstream，不能在 fabric 正在跑的时候写这个寄存器。
 
-| 指标 | 结果 | 门槛 |
-|------|------|------|
-| HLS csim + PS Dense Top-1 | **82%** | ≥80% |
-| GAP MAE | **0.026** | ≤0.35 |
-| 门控文件 | `results/v19_route1_gates.json` | `overall_pass: true` |
+### 功能与面积
 
-### 板端（已达标：DMA 64-bit + HP0 运行时 64-bit）
+| 指标 | 结果 |
+|------|------|
+| 板端 / csim Top-1 | **81.78%**（同一份 1 万张；Keras 81.90%） |
+| 1 万张自然图像 GAP | 板端与 csim 逐比特一致 |
+| 729 张合成图像 | A2-L csim、RC1 csim、板端三者最大差 0 LSB |
+| 布线后 LUT as Logic | 44 692 / 87 840 |
+| DSP48E2 | 207 / 728 |
+| BRAM tile | 25 |
+| 5 ns 约束 WNS | +0.048 ns（Performance_Explore；不是每种策略都过） |
 
-| 指标 | 结果 | 目标 |
-|------|------|------|
-| 0xAA 预填诊断 | **24 word 全数据，无洞** | `aa_word_indices: []` |
-| board vs csim GAP | **24/24 匹配** | 全维对齐 |
-| N=100 Top-1 | **82%** | ≥75%（对齐 csim） |
-| DMA 延迟 | ~57 ms，IOC 正常 | — |
+### 延迟（C 热路径，1 万张 × 3）
 
-**修复组合（两步缺一不可）：**
+`T_wait` 是启动 DMA 之后等到 S2MM 完成。`T_hot` 含写输入、启动、等待、读回、解码和 Dense。
 
-1. **Bitstream**：`tcl/create_block_design.tcl` 中 `DMA_M_AXI_DATA_WIDTH=64`，DRE=0，DMA 经 `S_AXI_HP0_FPD`
-2. **运行时**：`scripts/board_fix_hp0_width.py` 在 `fpga_manager` 加载后将 AFIFM2 设为 **64-bit**（`bits[1:0]=01`）
+| 设计 | 时钟 | `T_wait` | `T_hot` |
+|------|------|----------|---------|
+| 旧 bitstream | 99.94 MHz | 57.11 ms | 57.12 ms |
+| RC1 | 99.94 MHz | 1.684 ms | 1.698 ms |
+| RC1 | 149.9 MHz | 1.123 ms | 1.137 ms |
+| **RC2** | 99.94 MHz | 0.576 ms | 0.590 ms |
+| **RC2** | **149.9 MHz** | **0.384 ms** | **0.397 ms** |
 
-**注意：** 旧版脚本将 HP0 设为 32-bit 会导致洞再现、Top-1 跌至 ~26%。每次 PL 重载后须执行 HP0 修复（`board_load_only.sh` 可自动调用）。
+同时钟下，旧 bitstream 到 RC2 的等待时间是 **99.2 倍**。RC2 跑在 149.9 MHz 时，相对旧 bitstream 是 **148.7 倍**。RC2 单流大约 2 518 FPS。
 
-详细记录：`docs/board_dma64_fix.md`、`results/board_dma64_verify_summary.json`
+C 热路径在 99.94 MHz 与 149.9 MHz 上的长跑都是 0 次尾部哨兵。RC2 在 149.9 MHz 上 1 000 万帧 0 事件，Garwood 95% 上界 0.37 次/百万帧。
+
+### 与 A53 上 TFLite INT8 的对照
+
+同一份 1 万张、同一顺序。CPU 模型不是 FPGA 这条网络。
+
+| 口径 | 1 线程 | 4 线程 |
+|------|--------|--------|
+| Top-1 | 79.33% | 79.33% |
+| 只计 `invoke` | 13.86 ms | 12.18 ms |
+| 端到端（负载到类别） | 14.03 ms | 12.38 ms |
+
+RC2 的 `T_hot` 0.397 ms 相对 1 线程端到端约 35 倍，相对 4 线程约 31 倍。
+
+功耗没有板外功率计，不在这里给 J/帧。片上温度传感器在一次 70 分钟连续推理前后读到 PL 约 35 °C。
+
+---
+
+## 架构
+
+```
+uint8 图像
+  → PS：量化为 int16，scale 1024，6144 字节
+  → AXI DMA MM2S
+  → PL：myproject_axi（卷积 + GAP，24×int16，96 字节，serial）
+  → AXI DMA S2MM
+  → PS：Dense 24→10
+```
+
+| 项 | 值 |
+|----|----|
+| HLS 顶层 | `myproject_axi` |
+| BD / IP | `system` / `cifar10_accel` |
+| DMA | Simple 模式，M_AXI 64-bit，DRE 关闭 |
+| HP0 | 加载后把 AFIFM 设为 64-bit（AR66295） |
+| 输出布局 | `OUT_LAYOUT=gap_ps`，`OUTPUT_PACK_MODE=serial` |
+| RC2 复用因子 | 27 / 36 / 144 / 90 / 180 / 216 |
+
+加载 bitstream 之后，HP0 经常仍是 32-bit。`scripts/board_load_only.sh` 会调用 `scripts/board_fix_hp0_width.py` 把它改成 64-bit。这一步不做，S2MM 会写成稀疏的洞。
+
+Python 旧路径在 149.9 MHz 上会把完成标志清掉但不读回，尾部 32 字节可能一直停在预先写入的 `0xAA`，并且一旦发生会锁住很多帧。C 热路径在启动前把 IOC 读回为 0。沿用 Python 路径时要做同样的读回。
 
 ---
 
@@ -51,117 +97,75 @@
 | 资源 | 规格 |
 |------|------|
 | **SoC** | Xilinx Zynq UltraScale+ XCZU4EV-1SFVC784I |
-| **LUT** | 88,000 |
+| **LUT** | 87 840 |
 | **DSP48E2** | 728 |
-| **BRAM** | 4.5 Mb（252 × BRAM_18K） |
+| **BRAM** | 256 × BRAM_18K |
 | **PS DDR4** | 4 GB，64-bit |
 | **PS CPU** | ARM Cortex-A53 四核 |
 | **工具链** | Vivado / Vitis HLS 2020.1，PetaLinux 2020.1 |
 
 ---
 
-## 环境与路径
+## 环境
 
 | 用途 | 说明 |
 |------|------|
-| 工程根目录 | 克隆仓库后的根目录（下文命令均在此执行） |
-| 板子 IP | 环境变量 `BOARD_IP`（局域网 DHCP，以实际为准） |
-| 板上工作目录 | `/tmp/edgeai_bench/`（可自定义） |
+| 工程根目录 | 克隆仓库后的根目录 |
+| 板子地址 | 环境变量 `BOARD_IP`（局域网 DHCP） |
+| 板上工作目录 | `/tmp/edgeai_bench/` |
 
-**Conda 环境：** 按本地配置激活 QAT / 板端脚本环境与 hls4ml 1.3 转换环境。
+工具链和 Conda 环境按本机安装路径自行 `source` / 激活。不要把个人主目录写进脚本后提交。
 
----
+本地三份 bitstream 的 MD5（文件不在 Git 里）：
 
-## v19 Route 1 流水线（训练与 csim）
-
-GAP-only 导出，`input_qact` 在 QAT 图中，`bit_exact=True`。
-
-```bash
-# 在仓库根目录 — QAT 微调 + bit_exact 转换 + csim 门控
-FT_EPOCHS=40 CSIM_TOP1_MIN=75 N_ACCURACY=100 \
-  bash scripts/run_v19_qat_resume.sh
-
-cat results/v19_route1_gates.json
-```
-
-| 脚本 | 作用 |
-|------|------|
-| `scripts/run_v19_qat_resume.sh` | 主流程：微调 → 转换 → HLS 补丁 → csim → Top-1 门控 |
-| `scripts/v19_bitexact_convert.py` | hls4ml 1.3 GAP-only 转换 |
-| `scripts/v19_csim_route1_gates.py` | Top-1 主门控；MAE 辅助 |
-| `scripts/setup_hls4ml13_env.sh` | hls4ml 1.3 环境安装 |
-
-**导出布局（serial GAP）：** `OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial`
-
----
-
-## 板端推理（devmem + DMA）
-
-### 安全守则
-
-- devmem / DMA 前确认 `fpga0 state=operating`
-- 先 `FORCE_PL_RELOAD=1 sh board_load_only.sh` 再访问 CMA / DMA
-- 统一用 **fpga_manager** 加载 bit（避免 JTAG 双源）
-- 默认入口：`bash scripts/board_safe_verify.sh`
-
-### 常用命令
-
-```bash
-# 部署 + 单次 fetch 验收（需先设置 BOARD_IP）
-export BOARD_IP=<your-board-ip>
-bash scripts/board_safe_verify.sh
-
-# 板端环境变量（serial GAP）
-OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial
-
-# N=100 精度（需 dense_head.npz）
-OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial \
-  bash scripts/board_auto_fix.sh
-
-# 0xAA 预填诊断（判定 DMA 洞布局）
-OUT_DIM=24 OUT_BYTES=96 OUTPUT_PACK_MODE=serial PREFILL_BYTES=96 \
-  python3 scripts/board_aa_serial96_diag.py
-```
-
-### 当前 deploy 产物（2026-07-03）
-
-| 文件 | MD5 |
+| 角色 | MD5 |
 |------|-----|
-| `deploy/cifar10_accel.bit` | `e64130011ab039a86a8347b320b565a7` |
-| `deploy/cifar10_accel.hwh` | `af03c6b930d424a7a95fe9e076ce67bd` |
-| `deploy/cifar10_accel.ltx` | `70142ec79f1cc9ab49e6e2fa260fd101` |
-
-> 大体积 bit/xsa 默认不纳入 Git，请在本地 Vivado 构建后从 `deploy/` 取用。说明见 `deploy/DEPLOY_README.txt`。
-
-### 板端关键脚本
-
-| 脚本 | 作用 |
-|------|------|
-| `scripts/board_load_only.sh` | fpga_manager 加载 bit；加载后调用 HP0 宽度修复 |
-| `scripts/board_fix_hp0_width.py` | AR66295：尝试将 HP0 设为 32-bit（fpga_manager 场景） |
-| `scripts/dma_infer_common.py` | DMA/devmem 公共逻辑；自动 hole-pair DRAM 解码 |
-| `scripts/board_fetch_gap.py` | 单次 DMA + GAP JSON 输出 |
-| `scripts/board_aa_serial96_diag.py` | 0xAA 预填 + S2MM 洞布局诊断 |
-| `scripts/ila_final_build.sh` | 一次性 bit + ltx 重建（含 BD 自检） |
+| 已知良好版 `deploy/cifar10_accel.bit` | `46987907f8177883048b705fdf68c370` |
+| RC1 | `334e27454dcb05d179d6d188b7d404c3` |
+| **RC2（推荐）** | `395160123c39a98d478e598c9f93e39e` |
 
 ---
 
-## Vivado 构建
+## 板端推理
+
+`fpga0` 不是 `operating` 时，不要访问 DMA 或输入输出缓冲。未加载 PL 就读这些地址会把 AXI 总线挂死。
 
 ```bash
-# 在仓库根目录
-source /tools/Xilinx/Vivado/2020.1/settings64.sh
+export BOARD_IP=<your-board-ip>
 
-# Block Design（HLS 32-bit serial 输出）
-export HLS_OUTPUT_AXIS_BITS=32
+# 只加载 PL，并在加载后把 HP0 设为 64-bit
+FORCE_PL_RELOAD=1 sh scripts/board_load_only.sh
+
+# 单次验收
+bash scripts/board_safe_verify.sh
+```
+
+板端进程使用：
+
+```bash
+OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps \
+  OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial
+```
+
+推荐运行点还要把 `DIVISOR0` 写成 10，然后立刻重新加载 RC2，并读回 `0x01010a02`。读回不是这个字就不要开始计时。
+
+默认不要跑全量扫描或上百次重复基准；那些脚本会长时间占用 DMA。
+
+---
+
+## Vivado / HLS
+
+在仓库根目录执行，并先 `source` 对应的 2020.1 settings 脚本。
+
+```bash
+# Block Design：DMA M_AXI 64-bit，HLS 输出直连 S2MM
 vivado -mode batch -source tcl/create_block_design.tcl
 
-# 综合 + 实现 + bitstream
-bash scripts/ila_final_build.sh
-# 或：FORCE_REBUILD=1 vivado -mode batch -source tcl/run_impl_and_bitstream.tcl
+# 综合、实现、bitstream
+vivado -mode batch -source tcl/run_impl_and_bitstream.tcl
 ```
 
-**BD 要点：** HLS `output_stream` 直连 DMA S2MM（无 `axis_dw_s2mm`）；DMA M_AXI 32-bit + DRE；数据路径 DMA → SmartConnect → HP0_FPD。
+签核约束是 5 ns。板上实际用 149.9 MHz（周期约 6.67 ns）。不要把约束改成 6.67 ns 再拿那个 bitstream 当 5 ns 的签核结果。
 
 ---
 
@@ -169,27 +173,15 @@ bash scripts/ila_final_build.sh
 
 ```
 EdgeAI-ZU4EV_Claude/
-├── notebooks/          # 训练 / 量化 / HLS notebook
-├── scripts/            # Route1、板端、Vivado 构建脚本
-├── tcl/                # Vivado Block Design / 实现 Tcl
-├── constraints/        # 时序 XDC
-├── deploy/             # bit / hwh / xsa / dense_head（大文件见 .gitignore）
-├── results/            # 指标 JSON、交接文档、构建日志
-├── docs/               # 设计说明与状态文档
+├── notebooks/          # 训练、量化、HLS 工程
+├── scripts/            # 转换、板端、构建脚本
+├── tcl/                # Vivado Block Design 与实现
+├── constraints/        # XDC
+├── deploy/             # 本地 bitstream 与 Dense 权重（大文件不入库）
+├── results/            # 测量记录
+├── docs/               # 设计说明
 └── README.md
 ```
-
----
-
-## 性能参考（历史基线）
-
-| 指标 | 数值 |
-|------|------|
-| FP32 测试精度 | 81.05% |
-| Q6 QKeras（bench） | ~80–84% |
-| PL LUT（全设计） | 24,702 / 88,000（28.07%） |
-
-详见 `results/resource_report.md`。
 
 ---
 
@@ -198,8 +190,9 @@ EdgeAI-ZU4EV_Claude/
 1. [hls4ml](https://fastmachinelearning.org/hls4ml/) — Duarte et al., JINST 13 (2018)
 2. [QKeras](https://github.com/google/qkeras) — Coelho et al., Nature Electronics (2021)
 3. [Zynq UltraScale+ TRM](https://docs.xilinx.com/r/en-US/ug1085-zynq-ultrascale-trm)（UG1085）
-4. [AXI DMA PG021](https://docs.xilinx.com/r/en-US/pg021-axi-dma)
-5. AMD AR66295 — PS-PL AXI 位宽与 `psu_init` 注意事项
+4. [Zynq UltraScale+ 寄存器参考](https://docs.amd.com/r/en-US/ug1087-zynq-ultrascale-registers)（UG1087，`PL0_REF_CTRL`）
+5. [AXI DMA PG021](https://docs.xilinx.com/r/en-US/pg021-axi-dma)
+6. AMD AR66295 — PS-PL AXI 位宽
 
 ---
 
