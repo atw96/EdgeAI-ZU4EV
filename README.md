@@ -86,6 +86,8 @@ uint8 图像
 | 输出布局 | `OUT_LAYOUT=gap_ps`，`OUTPUT_PACK_MODE=serial` |
 | RC2 复用因子 | 27 / 36 / 144 / 90 / 180 / 216 |
 
+`scripts/v19_hls_config_common.py` 里的默认表是 A1'（27/144/144/180/180/216）。RC2 要先运行 `python3 scripts/opt_v2/set_rf.py --variant A2-L`，把上表写进这份配置，再做 HLS 转换。
+
 加载 bitstream 之后，HP0 经常仍是 32-bit。`scripts/board_load_only.sh` 会调用 `scripts/board_fix_hp0_width.py` 把它改成 64-bit。这一步不做，S2MM 会写成稀疏的洞。
 
 Python 旧路径在 149.9 MHz 上会把完成标志清掉但不读回，尾部 32 字节可能一直停在预先写入的 `0xAA`，并且一旦发生会锁住很多帧。C 热路径在启动前把 IOC 读回为 0。沿用 Python 路径时要做同样的读回。
@@ -132,6 +134,8 @@ Python 旧路径在 149.9 MHz 上会把完成标志清掉但不读回，尾部 3
 
 ```bash
 export BOARD_IP=<your-board-ip>
+export SSHPASS=<board-ssh-password>
+export BOARD_PASS="$SSHPASS"
 
 # 只加载 PL，并在加载后把 HP0 设为 64-bit
 FORCE_PL_RELOAD=1 sh scripts/board_load_only.sh

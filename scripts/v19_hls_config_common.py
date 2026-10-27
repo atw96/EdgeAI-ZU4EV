@@ -5,16 +5,20 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 MODEL_H5 = REPO / 'notebooks' / 'model_int8_qkeras.h5'
 
 # Lower RF for more parallelism (impl LUT/BRAM headroom; valid hls4ml divisors).
 RF_PER_LAYER = {
-    'conv1a': 108,
-    'conv1b': 576,
-    'conv2a': 720,
-    'conv2b': 900,
-    'conv3a': 1080,
-    'conv3b': 1296,
+    # 2026-10-17 v2 variant A1prime. Global ReuseFactor is min(these) at convert time.
+    'conv1a': 27,
+    'conv1b': 144,
+    'conv2a': 144,
+    'conv2b': 180,
+    'conv3a': 180,
+    'conv3b': 216,
     'predictions': 240,
 }
 
@@ -91,8 +95,63 @@ def configure_rounding_saturation(model=None):
         print('Note: rounding/saturation configure skipped:', exc)
 
 
+def _kernel_hw(layer):
+    ks = layer.kernel_size
+    if isinstance(ks, int):
+        return ks, ks
+    return int(ks[0]), int(ks[1])
+
+
+def _layer_n_in_n_out(layer):
+    """Conv: n_in=Cin*kh*kw, n_out=Cout. Dense: n_in=last dim, n_out=units."""
+    if hasattr(layer, 'filters') and hasattr(layer, 'kernel_size'):
+        shape = getattr(layer, 'input_shape', None)
+        if shape is None and getattr(layer, 'input', None) is not None:
+            shape = layer.input.shape
+        if not shape or shape[-1] is None:
+            raise ValueError('layer %s has no input channels' % layer.name)
+        kh, kw = _kernel_hw(layer)
+        return int(shape[-1]) * kh * kw, int(layer.filters)
+    if hasattr(layer, 'units'):
+        shape = getattr(layer, 'input_shape', None)
+        if shape is None and getattr(layer, 'input', None) is not None:
+            shape = layer.input.shape
+        if not shape or shape[-1] is None:
+            raise ValueError('layer %s has no input features' % layer.name)
+        return int(shape[-1]), int(layer.units)
+    return None
+
+
+def _assert_rf_table(model):
+    """2026-10-17: hls4ml 只对非法 RF 打 WARNING 并改写。这里直接 raise。"""
+    from rf_planner import dense_variant, valid_rf
+
+    for layer in model.layers:
+        lname = layer.name
+        if lname not in RF_PER_LAYER or not hasattr(layer, 'kernel'):
+            continue
+        n_in, n_out = _layer_n_in_n_out(layer)
+        rf = int(RF_PER_LAYER[lname])
+        if rf <= 0 or not valid_rf(n_in, n_out, rf):
+            raise ValueError(
+                'Illegal ReuseFactor %s RF=%d n_in=%d n_out=%d '
+                '(hls4ml would silently rewrite)' % (lname, rf, n_in, n_out)
+            )
+        print(
+            'RF ok %s RF=%d n_in=%d n_out=%d P=%d [%s]'
+            % (lname, rf, n_in, n_out, n_in * n_out // rf, dense_variant(n_in, rf))
+        )
+
+
+def _min_configured_rf():
+    if not RF_PER_LAYER:
+        raise ValueError('RF_PER_LAYER is empty')
+    return int(min(RF_PER_LAYER.values()))
+
+
 def _apply_route1_overrides(cfg, model, trace=False, bit_exact=False):
     """Synthesis overrides — preserve LayerName Precision from QKeras quantizers."""
+    _assert_rf_table(model)
     cfg.setdefault('Backend', 'Vivado')
     cfg.setdefault('BackendConfig', {})
     cfg['ClockPeriod'] = cfg.get('ClockPeriod', 5)
@@ -100,7 +159,8 @@ def _apply_route1_overrides(cfg, model, trace=False, bit_exact=False):
     cfg['IOType'] = cfg.get('IOType', 'io_stream')
 
     cfg.setdefault('Model', {})
-    cfg['Model']['ReuseFactor'] = 288
+    # 2026-10-17 v2: 全局 RF 取各层最小值，避免固定 288 把 pool/GAP 重新限死。
+    cfg['Model']['ReuseFactor'] = _min_configured_rf()
     cfg['Model']['Strategy'] = 'Resource'
     cfg['Model']['BramFactor'] = 1000000
     cfg.setdefault('LayerName', {})

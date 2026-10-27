@@ -1,12 +1,14 @@
 #!/bin/bash
+: "${EDGEAI_ROOT:=$(cd "$(dirname "$0")/.." && pwd)}"
+export EDGEAI_ROOT
 set -euo pipefail
 
-REPO="/home/atw/Edge_AI_Acc/claude/EdgeAI-ZU4EV_Claude"
+REPO="${EDGEAI_ROOT}"
 cd "$REPO"
 mkdir -p results
 
-BOARD_IP="${BOARD_IP:-192.168.1.40}"
-BOARD_PASS="${BOARD_PASS:-root}"
+BOARD_IP="${BOARD_IP:?BOARD_IP}"
+BOARD_PASS="${BOARD_PASS:?BOARD_PASS}"
 BOARD_DIR="/tmp/edgeai_bench"
 SERIAL_ENV="OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial BOARD_S2MM_SLOT_TIMING=0"
 

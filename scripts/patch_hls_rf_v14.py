@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """v14: raise conv/mult RF (~2x v13) to cut LUT toward ~80K budget."""
+import os
 import re
 import sys
 from pathlib import Path
@@ -36,6 +37,11 @@ def _patch_rf(text, cfg, rf, struct_pat):
 
 
 def main() -> int:
+    # 2026-10-17: v2 的每层 RF 以 v19_hls_config_common.RF_PER_LAYER 为准。
+    # 本脚本会改写成另一套高复用表，hls4ml 还可能再静默改写非法值。
+    if os.environ.get('OPT_V2_KEEP_RF', '0') == '1':
+        print('OPT_V2_KEEP_RF=1 — skip patch_hls_rf_v14 (would overwrite per-layer RF)')
+        return 0
     if not PARAMS.is_file():
         print('ERROR: missing %s' % PARAMS, file=sys.stderr)
         return 1

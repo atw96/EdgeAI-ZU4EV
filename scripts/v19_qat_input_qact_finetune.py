@@ -36,19 +36,23 @@ def _parse_quant_alpha(raw):
 
 
 def build_q6_input_qact(keras, layers, QConv2D, QDense, QActivation, quantized_bits, quantized_relu,
-                        name='VGG_Lite_Q6', quant_alpha='auto_po2'):
+                        name='VGG_Lite_Q6', quant_alpha='auto_po2', bits=6, channels=(16, 20, 24)):
+    """bits applies to weights, bias, input_qact and relu together. Default stays Q6 16/20/24."""
+    if len(channels) != 3:
+        raise ValueError('channels must be (conv1, conv2, conv3), got %s' % (channels,))
     alpha = _parse_quant_alpha(str(quant_alpha))
-    k_q = quantized_bits(6, 0, alpha=alpha)
-    b_q = quantized_bits(6, 2, alpha=alpha)
-    a_q = quantized_relu(6, 2)
-    inp_q = quantized_bits(6, 0, alpha=alpha)
+    # 2026-10-17 v2 line B: Q8 passes bits=8; integer-bit split stays 0/2/2 like Q6.
+    k_q = quantized_bits(int(bits), 0, alpha=alpha)
+    b_q = quantized_bits(int(bits), 2, alpha=alpha)
+    a_q = quantized_relu(int(bits), 2)
+    inp_q = quantized_bits(int(bits), 0, alpha=alpha)
     inp = keras.Input((32, 32, 3), name='input_image')
     x = QActivation(inp_q, name='input_qact')(inp)
-    x = _conv_block_q(x, 16, 'conv1', k_q, b_q, a_q, layers, QConv2D, QActivation)
+    x = _conv_block_q(x, int(channels[0]), 'conv1', k_q, b_q, a_q, layers, QConv2D, QActivation)
     x = layers.MaxPooling2D(2, name='pool1')(x)
-    x = _conv_block_q(x, 20, 'conv2', k_q, b_q, a_q, layers, QConv2D, QActivation)
+    x = _conv_block_q(x, int(channels[1]), 'conv2', k_q, b_q, a_q, layers, QConv2D, QActivation)
     x = layers.MaxPooling2D(2, name='pool2')(x)
-    x = _conv_block_q(x, 24, 'conv3', k_q, b_q, a_q, layers, QConv2D, QActivation)
+    x = _conv_block_q(x, int(channels[2]), 'conv3', k_q, b_q, a_q, layers, QConv2D, QActivation)
     x = layers.GlobalAveragePooling2D(name='gap')(x)
     out = QDense(
         10, activation='softmax', kernel_quantizer=k_q, bias_quantizer=b_q, name='predictions',
@@ -88,7 +92,23 @@ def load_teacher(keras, path):
     return keras.models.load_model(str(path), compile=False)
 
 
-def finetune(student, teacher, train_ds, val_ds, epochs, lr, kd_alpha, kd_temp):
+def _snapshot_weights(model):
+    return [w.numpy().copy() for w in model.weights]
+
+
+def _assign_weights(model, values):
+    for variable, value in zip(model.weights, values):
+        variable.assign(value)
+
+
+def _ema_update(shadow, model, decay):
+    for slot, variable in zip(shadow, model.weights):
+        slot *= decay
+        slot += (1.0 - decay) * variable.numpy()
+
+
+def finetune(student, teacher, train_ds, val_ds, epochs, lr, kd_alpha, kd_temp,
+             save_path=None, ema_decay=0.0):
     import tensorflow as tf
 
     class WarmupCosineDecay(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -125,6 +145,8 @@ def finetune(student, teacher, train_ds, val_ds, epochs, lr, kd_alpha, kd_temp):
 
     best_val = 0.0
     history = []
+    save_path = Path(save_path) if save_path else MODEL_H5
+    shadow = _snapshot_weights(student) if ema_decay and ema_decay > 0 else None
     if teacher is not None:
         teacher.trainable = False
 
@@ -139,6 +161,8 @@ def finetune(student, teacher, train_ds, val_ds, epochs, lr, kd_alpha, kd_temp):
                     loss = tf.reduce_mean(tf.keras.losses.categorical_crossentropy(yb, s_out))
             grads = tape.gradient(loss, student.trainable_variables)
             opt.apply_gradients(zip(grads, student.trainable_variables))
+            if shadow is not None:
+                _ema_update(shadow, student, ema_decay)
 
         accs = []
         for xb, yb in val_ds:
@@ -148,9 +172,27 @@ def finetune(student, teacher, train_ds, val_ds, epochs, lr, kd_alpha, kd_temp):
         history.append({'epoch': epoch + 1, 'val_acc': val_acc})
         if (epoch + 1) % 5 == 0 or epoch == 0:
             print('  finetune ep %d/%d val_acc=%.4f' % (epoch + 1, epochs, val_acc))
-        if val_acc > best_val:
-            best_val = val_acc
-            student.save(str(MODEL_H5), include_optimizer=False)
+        ema_acc = None
+        if shadow is not None:
+            live = _snapshot_weights(student)
+            _assign_weights(student, shadow)
+            ema_accs = []
+            for xb, yb in val_ds:
+                pred = tf.argmax(student(xb, training=False), axis=1)
+                ema_accs.append(float(tf.reduce_mean(tf.cast(tf.equal(tf.argmax(yb, 1), pred), tf.float32))))
+            ema_acc = float(np.mean(ema_accs))
+            _assign_weights(student, live)
+            history[-1]['ema_val_acc'] = ema_acc
+        score = ema_acc if ema_acc is not None else val_acc
+        if score > best_val:
+            best_val = score
+            if shadow is not None and ema_acc is not None and ema_acc >= val_acc:
+                live = _snapshot_weights(student)
+                _assign_weights(student, shadow)
+                student.save(str(save_path), include_optimizer=False)
+                _assign_weights(student, live)
+            else:
+                student.save(str(save_path), include_optimizer=False)
 
     return best_val, history
 
@@ -199,7 +241,16 @@ def main() -> int:
                     help='Skip if model already has input_qact layer')
     ap.add_argument('--quant-alpha', default=os.environ.get('QAT_ALPHA', 'auto_po2'),
                     help='QKeras quantizer alpha (use 1 for bit_exact fallback)')
+    ap.add_argument('--bits', type=int, default=6, help='Weight/activation/input_qact bit width')
+    ap.add_argument('--channels', default='16,20,24', help='conv1,conv2,conv3 widths')
+    ap.add_argument('--out-h5', default='', help='Write here instead of model_int8_qkeras.h5')
+    ap.add_argument('--report-json', default='', help='Write the report here instead of the default JSON')
+    ap.add_argument('--from-scratch', action='store_true', help='Do not load the Q6 checkpoint')
+    ap.add_argument('--ema-decay', type=float, default=0.0, help='0 disables EMA; B2 uses 0.999')
     args = ap.parse_args()
+    channels = tuple(int(x) for x in args.channels.split(','))
+    out_h5 = Path(args.out_h5) if args.out_h5 else MODEL_H5
+    report_path = Path(args.report_json) if args.report_json else OUT_JSON
 
     import tensorflow as tf
     from tensorflow import keras
@@ -208,7 +259,7 @@ def main() -> int:
 
     tf.random.set_seed(42)
 
-    if not MODEL_H5.is_file():
+    if not args.from_scratch and not MODEL_H5.is_file():
         print('ERROR: missing %s — run Q6 QAT first' % MODEL_H5, file=sys.stderr)
         return 1
 
@@ -216,24 +267,31 @@ def main() -> int:
         'QConv2D': QConv2D, 'QDense': QDense, 'QActivation': QActivation,
         'quantized_bits': quantized_bits, 'quantized_relu': quantized_relu,
     }
-    existing = keras.models.load_model(str(MODEL_H5), custom_objects=custom, compile=False)
-    if any(l.name == 'input_qact' for l in existing.layers):
-        if args.skip_if_qact:
-            print('Model already has input_qact — skip fine-tune')
-            return 0
-        print('WARNING: overwriting model that already has input_qact')
-
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    bak = MODEL_H5.with_suffix('.h5.bak_before_input_qact_%s' % ts)
-    shutil.copy2(MODEL_H5, bak)
-    print('Backed up %s -> %s' % (MODEL_H5, bak))
+    if out_h5 == MODEL_H5 and MODEL_H5.is_file():
+        existing = keras.models.load_model(str(MODEL_H5), custom_objects=custom, compile=False)
+        if any(l.name == 'input_qact' for l in existing.layers):
+            if args.skip_if_qact:
+                print('Model already has input_qact — skip fine-tune')
+                return 0
+            print('WARNING: overwriting model that already has input_qact')
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        bak = MODEL_H5.with_suffix('.h5.bak_before_input_qact_%s' % ts)
+        shutil.copy2(MODEL_H5, bak)
+        print('Backed up %s -> %s' % (MODEL_H5, bak))
+    else:
+        bak = ''
+        print('Writing line-B weights to %s (Q6 checkpoint left untouched)' % out_h5)
 
     student = build_q6_input_qact(
         keras, layers, QConv2D, QDense, QActivation, quantized_bits, quantized_relu,
-        quant_alpha=args.quant_alpha,
+        quant_alpha=args.quant_alpha, bits=args.bits, channels=channels,
+        name='VGG_Lite_Q%d' % args.bits,
     )
-    student.load_weights(str(MODEL_H5), by_name=True, skip_mismatch=True)
-    print('Loaded weights (skip_mismatch) from', MODEL_H5)
+    if not args.from_scratch:
+        student.load_weights(str(MODEL_H5), by_name=True, skip_mismatch=True)
+        print('Loaded weights (skip_mismatch) from', MODEL_H5)
+    else:
+        print('from-scratch: not loading', MODEL_H5)
     print('Layers:', [l.name for l in student.layers[:4]])
 
     train_ds, val_ds = make_datasets(tf, keras)
@@ -246,29 +304,38 @@ def main() -> int:
         epochs=args.epochs, lr=args.lr,
         kd_alpha=args.kd_alpha if teacher else 0.0,
         kd_temp=args.kd_temp,
+        save_path=out_h5,
+        ema_decay=args.ema_decay,
     )
 
-    saved = keras.models.load_model(str(MODEL_H5), custom_objects=custom, compile=False)
+    saved = keras.models.load_model(str(out_h5), custom_objects=custom, compile=False)
     bench = eval_bench(saved)
 
     report = {
         'route': 'input_qact_finetune',
         'quant_alpha': args.quant_alpha,
-        'activation_mode': 'quantized_relu_6_2_single_layer',
+        'bits': args.bits,
+        'channels': list(channels),
+        'from_scratch': args.from_scratch,
+        'ema_decay': args.ema_decay,
+        'activation_mode': 'quantized_relu_%d_2_single_layer' % args.bits,
         'epochs': args.epochs,
         'lr': args.lr,
         'best_val_acc': best_val,
         'backup_h5': str(bak),
-        'model_h5': str(MODEL_H5),
+        'model_h5': str(out_h5),
         'has_input_qact': any(l.name == 'input_qact' for l in saved.layers),
         'bench': bench,
         'history_tail': history[-5:],
     }
-    OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    OUT_JSON.write_text(json.dumps(report, indent=2), encoding='utf-8')
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    if report_path.exists() and report_path != OUT_JSON:
+        print('ERROR: refuse to overwrite %s' % report_path, file=sys.stderr)
+        return 1
+    report_path.write_text(json.dumps(report, indent=2), encoding='utf-8')
     print('Best val acc: %.4f' % best_val)
     print('Bench:', bench)
-    print('Written:', OUT_JSON)
+    print('Written:', report_path)
     return 0
 
 

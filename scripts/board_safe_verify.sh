@@ -9,13 +9,15 @@ mkdir -p results
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate edgeai_39
 
-BOARD_IP="${BOARD_IP:-192.168.1.40}"
+BOARD_IP="${BOARD_IP:?BOARD_IP}"
 BOARD_USER="${BOARD_USER:-root}"
-BOARD_PASS="${BOARD_PASS:-root}"
+BOARD_PASS="${BOARD_PASS:?BOARD_PASS}"
 
 echo "[$(date '+%F %T')] === board_safe_verify @ ${BOARD_USER}@${BOARD_IP} ==="
 
-sshpass -p "$BOARD_PASS" ssh -o StrictHostKeyChecking=no "${BOARD_USER}@${BOARD_IP}" \
+SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8)
+
+sshpass -p "$BOARD_PASS" ssh "${SSH_OPTS[@]}" "${BOARD_USER}@${BOARD_IP}" \
   "mkdir -p /tmp/edgeai_bench"
 
 SCP_FILES=(
@@ -23,7 +25,7 @@ SCP_FILES=(
   "$REPO/scripts/slot32_layout.py"
   "$REPO/scripts/board_fetch_gap.py"
   "$REPO/scripts/board_load_only.sh"
-  /scripts/board_fix_hp0_width.py
+  "$REPO/scripts/board_fix_hp0_width.py"
   "$REPO/deploy/cifar10_accel.bit"
   "$REPO/deploy/cifar10_bench.npz"
 )
@@ -31,24 +33,22 @@ if [ -f "$REPO/deploy/dense_head.npz" ]; then
   SCP_FILES+=("$REPO/deploy/dense_head.npz")
 fi
 
-sshpass -p "$BOARD_PASS" scp -o StrictHostKeyChecking=no \
+sshpass -p "$BOARD_PASS" scp "${SSH_OPTS[@]}" \
   "${SCP_FILES[@]}" \
   "${BOARD_USER}@${BOARD_IP}:/tmp/edgeai_bench/"
 
 echo "--- PL reload (FORCE_PL_RELOAD=1) ---"
-sshpass -p "$BOARD_PASS" ssh -o StrictHostKeyChecking=no "${BOARD_USER}@${BOARD_IP}" \
+sshpass -p "$BOARD_PASS" ssh "${SSH_OPTS[@]}" "${BOARD_USER}@${BOARD_IP}" \
   "cp /tmp/edgeai_bench/cifar10_accel.bit /lib/firmware/cifar10_accel.bit && \
    chmod +x /tmp/edgeai_bench/board_load_only.sh && \
-  /scripts/board_fix_hp0_width.py
    FORCE_PL_RELOAD=1 sh /tmp/edgeai_bench/board_load_only.sh"
-  /scripts/board_fix_hp0_width.py
 
 BOARD_ENV="OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial BOARD_S2MM_SLOT_TIMING=0 SAMPLE_IDX=0"
 
 echo "--- board_fetch_gap sample 0 ---"
 FETCH_LOG="results/board_safe_fetch.json"
-sshpass -p "$BOARD_PASS" ssh -o StrictHostKeyChecking=no "${BOARD_USER}@${BOARD_IP}" \
-  "cd /tmp/edgeai_bench && ${BOARD_ENV} python3 -u board_fetch_gap.py" \
+sshpass -p "$BOARD_PASS" ssh "${SSH_OPTS[@]}" "${BOARD_USER}@${BOARD_IP}" \
+  "cd /tmp/edgeai_bench && timeout 45 ${BOARD_ENV} python3 -u board_fetch_gap.py" \
   | tee "$FETCH_LOG"
 
 CSIM_BEATS="$REPO/notebooks/hls4ml_prj/tb_data/csim_axis_beats.log"
@@ -85,11 +85,11 @@ PY
 
 if [ "${FULL_BENCH:-0}" = "1" ]; then
   echo "--- optional FULL_BENCH: N_ACCURACY=10 ---"
-  sshpass -p "$BOARD_PASS" scp -o StrictHostKeyChecking=no \
+  sshpass -p "$BOARD_PASS" scp "${SSH_OPTS[@]}" \
     "$REPO/scripts/board_benchmark.py" \
     "${BOARD_USER}@${BOARD_IP}:/tmp/edgeai_bench/"
-  sshpass -p "$BOARD_PASS" ssh -o StrictHostKeyChecking=no "${BOARD_USER}@${BOARD_IP}" \
-    "cd /tmp/edgeai_bench && ${BOARD_ENV} DENSE_NPZ=dense_head.npz N_ACCURACY=10 python3 -u board_benchmark.py" \
+  sshpass -p "$BOARD_PASS" ssh "${SSH_OPTS[@]}" "${BOARD_USER}@${BOARD_IP}" \
+    "cd /tmp/edgeai_bench && timeout 45 ${BOARD_ENV} DENSE_NPZ=dense_head.npz N_ACCURACY=10 python3 -u board_benchmark.py" \
     | tee results/board_safe_bench.log
 fi
 

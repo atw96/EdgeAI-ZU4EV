@@ -74,7 +74,10 @@ def decode_gap_raw(raw, out_scale=None, n_outputs=None):
     if OUTPUT_PACK_MODE == 'serial':
         if BOARD_S2MM_SLOT_TIMING:
             return decode_board_s2mm_raw(raw, out_scale, n_outputs)
-        if dram_has_hole_pair_layout(raw, n_outputs):
+        # Zero GAP channels are real zeros once HP0 is 64-bit. The old hole
+        # detector treated those zeros as the 32-bit-HP padding pattern and
+        # shifted later channels (gray 0..51, 2026-10-18). Opt in only.
+        if os.environ.get('BOARD_DRAM_HOLE_PAIRS', '0') != '0' and dram_has_hole_pair_layout(raw, n_outputs):
             return decode_dram_hole_pairs_raw(raw, out_scale, n_outputs)
         return decode_serial32_raw(raw, out_scale, n_outputs)
     return decode_slot32_raw(raw, out_scale, n_outputs)

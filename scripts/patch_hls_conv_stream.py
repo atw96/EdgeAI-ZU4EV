@@ -20,16 +20,16 @@ def _cyclic(var: str, factor: int, dim: int = 1) -> str:
     )
 
 
+# kernel_data is left fully partitioned. Rewriting it to cyclic factor 4 cuts
+# the read ports, and the RF=27 ReuseLoop then schedules at II=8.
+# Measured on a stock vs patched Conv2D(16,3,same) from 32x32x3, RF=27:
+# 36997 cycles, II=1  vs  263573 cycles, II=8
+# (results/opt_v2/p4_micro_csynth.json). That is the conv1a 9.5x.
 REPLACEMENTS = [
     (
         '#pragma HLS ARRAY_PARTITION variable = shift_buffer complete dim = 0',
         _cyclic('shift_buffer', SHIFT_FACTOR, 1),
         'shift_buffer',
-    ),
-    (
-        '#pragma HLS ARRAY_PARTITION variable = kernel_data complete',
-        _cyclic('kernel_data', KERNEL_FACTOR, 1),
-        'kernel_data',
     ),
     (
         '#pragma HLS ARRAY_PARTITION variable = res_out complete dim = 0',
