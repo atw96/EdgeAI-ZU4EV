@@ -12,27 +12,31 @@
 
 ## 项目概述
 
-在 **ALINX ACU4EV**（Xilinx Zynq UltraScale+ XCZU4EV）上实现 CIFAR-10 学生网络加速器。通道数为 16/16/20/20/24/24。PL 只做卷积和全局平均池化，输出 24 维 GAP；PS 用一份小的 Dense 头（24→10）得到类别。
+在 **ALINX ACU4EV**（Xilinx Zynq UltraScale+ XCZU4EV）上实现 CIFAR-10 学生网络加速器。当前上板的是 **W1**：通道 16/16/32/32/64/64，QKeras 6-bit。PL 只做卷积和全局平均池化，输出 64 维 GAP；PS 用 Dense 头（64→10）得到类别。
 
-当前推荐比特流是 **RC2**（A2-L 复用因子）。已知良好版和 RC1 仍保留在本地 `deploy/`，本仓库不收录 bitstream。
+更早的 RC2 是 16/16/20/20/24/24，GAP 24 维。已知良好版、RC1、RC2 和 W1 的 bitstream 都只留在本地，本仓库不收录。
 
 ---
 
-## 当前状态（2026-10-27）
+## 当前状态（2026-11-08）
 
 运行点：`PL0_REF_CTRL` 的 `DIVISOR0=10`、`DIVISOR1=1`，读回字 `0x01010a02`，PL 时钟 **149.9136 MHz**。上电后寄存器会回到 `DIVISOR0=15`（99.9424 MHz）。改分频必须先写寄存器、立刻重新加载同一份 bitstream，不能在 fabric 正在跑的时候写这个寄存器。
 
 ### 功能与面积
 
-| 指标 | 结果 |
-|------|------|
-| 板端 / csim Top-1 | **81.78%**（同一份 1 万张；Keras 81.90%） |
-| 1 万张自然图像 GAP | 板端与 csim 逐比特一致 |
-| 729 张合成图像 | A2-L csim、RC1 csim、板端三者最大差 0 LSB |
-| 布线后 LUT as Logic | 44 692 / 87 840 |
-| DSP48E2 | 207 / 728 |
-| BRAM tile | 25 |
-| 5 ns 约束 WNS | +0.048 ns（Performance_Explore；不是每种策略都过） |
+| 指标 | W1（当前） | RC2 |
+|------|------|------|
+| 通道 | 16/16/32/32/64/64 | 16/16/20/20/24/24 |
+| GAP | 64 | 24 |
+| 板端 / csim Top-1 | **84.32%**（同一份 1 万张，0 LSB） | 81.78% |
+| 同一份 1 万张的 Keras Top-1 | 84.36% | 81.90% |
+| KAT | 19 张，最大差 0 LSB | 19 张，最大差 0 LSB |
+| 布线后 LUT as Logic | 61 034 / 87 840 | 44 692 / 87 840 |
+| DSP48E2 | 378 / 728 | 207 / 728 |
+| BRAM tile | 36 | 25 |
+| 5 ns 约束 WNS | +0.097 ns | +0.048 ns |
+
+两份都用 Performance_Explore。5 ns 过时序不表示换一种实现策略也会过。
 
 ### 延迟（C 热路径，1 万张 × 3）
 
@@ -44,11 +48,12 @@
 | RC1 | 99.94 MHz | 1.684 ms | 1.698 ms |
 | RC1 | 149.9 MHz | 1.123 ms | 1.137 ms |
 | **RC2** | 99.94 MHz | 0.576 ms | 0.590 ms |
-| **RC2** | **149.9 MHz** | **0.384 ms** | **0.397 ms** |
+| **RC2** | 149.9 MHz | 0.384 ms | 0.397 ms |
+| **W1** | **149.9 MHz** | **0.724 ms** | **0.745 ms** |
 
-同时钟下，旧 bitstream 到 RC2 的等待时间是 **99.2 倍**。RC2 跑在 149.9 MHz 时，相对旧 bitstream 是 **148.7 倍**。RC2 单流大约 2 518 FPS。
+W1 这组是三次 1 万张的中位数。三次的 `T_hot` 均值是 0.745 ms，P99 是 0.749 ms。1 000 万帧长跑的墙钟是 7457.5 s，约 1 341 FPS。RC2 在 149.9 MHz 上单流大约 2 518 FPS。
 
-C 热路径在 99.94 MHz 与 149.9 MHz 上的长跑都是 0 次尾部哨兵。RC2 在 149.9 MHz 上 1 000 万帧 0 事件，Garwood 95% 上界 0.37 次/百万帧。
+W1 和 RC2 在 149.9 MHz 上的 1 000 万帧长跑都是 0 事件。RC2 的 Garwood 95% 上界是 0.37 次/百万帧。RC2 那次 70 分钟连续推理前后，片上传感器读到 PL 约 35 °C。功耗没有板外功率计，不在这里给 J/帧。
 
 ### 与 A53 上 TFLite INT8 的对照
 
@@ -60,9 +65,7 @@ C 热路径在 99.94 MHz 与 149.9 MHz 上的长跑都是 0 次尾部哨兵。RC
 | 只计 `invoke` | 13.86 ms | 12.18 ms |
 | 端到端（负载到类别） | 14.03 ms | 12.38 ms |
 
-RC2 的 `T_hot` 0.397 ms 相对 1 线程端到端约 35 倍，相对 4 线程约 31 倍。
-
-功耗没有板外功率计，不在这里给 J/帧。片上温度传感器在一次 70 分钟连续推理前后读到 PL 约 35 °C。
+W1 的 `T_hot` 0.745 ms 相对 1 线程端到端约 19 倍，相对 4 线程约 17 倍。RC2 的 0.397 ms 相对这两档约 35 倍和 31 倍。CPU 模型和 FPGA 学生网络不是同一个模型。
 
 ---
 
@@ -72,9 +75,9 @@ RC2 的 `T_hot` 0.397 ms 相对 1 线程端到端约 35 倍，相对 4 线程约
 uint8 图像
   → PS：量化为 int16，scale 1024，6144 字节
   → AXI DMA MM2S
-  → PL：myproject_axi（卷积 + GAP，24×int16，96 字节，serial）
+  → PL：myproject_axi（卷积 + GAP，64×int16，256 字节，serial）
   → AXI DMA S2MM
-  → PS：Dense 24→10
+  → PS：Dense 64→10
 ```
 
 | 项 | 值 |
@@ -84,9 +87,10 @@ uint8 图像
 | DMA | Simple 模式，M_AXI 64-bit，DRE 关闭 |
 | HP0 | 加载后把 AFIFM 设为 64-bit（AR66295） |
 | 输出布局 | `OUT_LAYOUT=gap_ps`，`OUTPUT_PACK_MODE=serial` |
+| W1 复用因子 | 27 / 72 / 144 / 288 / 288 / 576 |
 | RC2 复用因子 | 27 / 36 / 144 / 90 / 180 / 216 |
 
-`scripts/v19_hls_config_common.py` 里的默认表是 A1'（27/144/144/180/180/216）。RC2 要先运行 `python3 scripts/opt_v2/set_rf.py --variant A2-L`，把上表写进这份配置，再做 HLS 转换。
+`scripts/v19_hls_config_common.py` 里的默认表是 A1'（27/144/144/180/180/216），不是 W1，也不是 RC2。做 RC2 的 HLS 转换前，先运行 `python3 scripts/opt_v2/set_rf.py --variant A2-L`。W1 用上面那一行复用因子，转换结束后把默认表改回去。
 
 加载 bitstream 之后，HP0 经常仍是 32-bit。`scripts/board_load_only.sh` 会调用 `scripts/board_fix_hp0_width.py` 把它改成 64-bit。这一步不做，S2MM 会写成稀疏的洞。
 
@@ -124,7 +128,8 @@ Python 旧路径在 149.9 MHz 上会把完成标志清掉但不读回，尾部 3
 |------|-----|
 | 已知良好版 `deploy/cifar10_accel.bit` | `46987907f8177883048b705fdf68c370` |
 | RC1 | `334e27454dcb05d179d6d188b7d404c3` |
-| **RC2（推荐）** | `395160123c39a98d478e598c9f93e39e` |
+| RC2 | `395160123c39a98d478e598c9f93e39e` |
+| **W1（当前上板）** | `69537392d6a929fc4986f846c2bf2a2c` |
 
 ---
 
@@ -147,11 +152,16 @@ bash scripts/board_safe_verify.sh
 板端进程使用：
 
 ```bash
+# W1
+OUT_DIM=64 OUT_BYTES=256 OUT_LAYOUT=gap_ps \
+  OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial
+
+# RC2
 OUT_DIM=24 OUT_BYTES=96 OUT_LAYOUT=gap_ps \
   OUT_FIXED_SCALE=1024 OUTPUT_PACK_MODE=serial
 ```
 
-推荐运行点还要把 `DIVISOR0` 写成 10，然后立刻重新加载 RC2，并读回 `0x01010a02`。读回不是这个字就不要开始计时。
+推荐运行点还要把 `DIVISOR0` 写成 10，然后立刻重新加载同一份 bitstream，并读回 `0x01010a02`。读回不是这个字就不要开始计时。W1 的 S2MM 长度是 256 字节。
 
 默认不要跑全量扫描或上百次重复基准；那些脚本会长时间占用 DMA。
 
