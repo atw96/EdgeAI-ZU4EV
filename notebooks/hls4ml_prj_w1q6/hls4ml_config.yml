@@ -1,0 +1,213 @@
+Backend: Vivado
+ClockPeriod: 5
+ClockUncertainty: 12.5%
+HLSConfig:
+  LayerName:
+    bn_conv1a:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<16,8,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        scale: ap_fixed<16,8,RND_CONV,SAT,0>
+      Trace: false
+    bn_conv1b:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<16,8,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        scale: ap_fixed<16,8,RND_CONV,SAT,0>
+      Trace: false
+    bn_conv2a:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<16,8,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        scale: ap_fixed<16,8,RND_CONV,SAT,0>
+      Trace: false
+    bn_conv2b:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<16,8,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        scale: ap_fixed<16,8,RND_CONV,SAT,0>
+      Trace: false
+    bn_conv3a:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<16,8,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        scale: ap_fixed<16,8,RND_CONV,SAT,0>
+      Trace: false
+    bn_conv3b:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<16,8,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        scale: ap_fixed<16,8,RND_CONV,SAT,0>
+      Trace: false
+    conv1a:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<6,2,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        weight: ap_fixed<6,1,RND_CONV,SAT,0>
+      ReuseFactor: 27
+      Strategy: Resource
+      Trace: false
+    conv1a_alpha:
+      Precision: auto
+    conv1a_linear:
+      Precision:
+        result: auto
+      Trace: false
+    conv1b:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<6,2,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        weight: ap_fixed<6,1,RND_CONV,SAT,0>
+      ReuseFactor: 72
+      Strategy: Resource
+      Trace: false
+    conv1b_alpha:
+      Precision: auto
+    conv1b_linear:
+      Precision:
+        result: auto
+      Trace: false
+    conv2a:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<6,2,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        weight: ap_fixed<6,1,RND_CONV,SAT,0>
+      ReuseFactor: 144
+      Strategy: Resource
+      Trace: false
+    conv2a_alpha:
+      Precision: auto
+    conv2a_linear:
+      Precision:
+        result: auto
+      Trace: false
+    conv2b:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<6,2,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        weight: ap_fixed<6,1,RND_CONV,SAT,0>
+      ReuseFactor: 288
+      Strategy: Resource
+      Trace: false
+    conv2b_alpha:
+      Precision: auto
+    conv2b_linear:
+      Precision:
+        result: auto
+      Trace: false
+    conv3a:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<6,2,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        weight: ap_fixed<6,1,RND_CONV,SAT,0>
+      ReuseFactor: 288
+      Strategy: Resource
+      Trace: false
+    conv3a_alpha:
+      Precision: auto
+    conv3a_linear:
+      Precision:
+        result: auto
+      Trace: false
+    conv3b:
+      Precision:
+        accum: ap_fixed<16,8,RND_CONV,SAT,0>
+        bias: ap_fixed<6,2,RND_CONV,SAT,0>
+        result: ap_fixed<16,8,RND_CONV,SAT,0>
+        weight: ap_fixed<6,1,RND_CONV,SAT,0>
+      ReuseFactor: 576
+      Strategy: Resource
+      Trace: false
+    conv3b_alpha:
+      Precision: auto
+    conv3b_linear:
+      Precision:
+        result: auto
+      Trace: false
+    gap:
+      Precision:
+        accum: ap_ufixed<18,8,RND_CONV,SAT,0>
+        result: ap_ufixed<12,2,RND_CONV,SAT,0>
+      Strategy: Resource
+      Trace: false
+    input_image:
+      Precision:
+        result: auto
+      Trace: false
+    input_qact:
+      Precision:
+        result: fixed<6,1,RND_CONV,SAT,0>
+      Trace: false
+    pool1:
+      Precision:
+        result: auto
+      Trace: false
+    pool2:
+      Precision:
+        result: auto
+      Trace: false
+    relu_conv1a:
+      Precision:
+        result: ufixed<6,2,RND_CONV,SAT,0>
+      Trace: false
+    relu_conv1b:
+      Precision:
+        result: ufixed<6,2,RND_CONV,SAT,0>
+      Trace: false
+    relu_conv2a:
+      Precision:
+        result: ufixed<6,2,RND_CONV,SAT,0>
+      Trace: false
+    relu_conv2b:
+      Precision:
+        result: ufixed<6,2,RND_CONV,SAT,0>
+      Trace: false
+    relu_conv3a:
+      Precision:
+        result: ufixed<6,2,RND_CONV,SAT,0>
+      Trace: false
+    relu_conv3b:
+      Precision:
+        result: ufixed<6,2,RND_CONV,SAT,0>
+      Trace: false
+  Model:
+    BitExact: null
+    BramFactor: 1000000
+    Precision:
+      default: fixed<16,6>
+    ReuseFactor: 27
+    Strategy: Resource
+    TraceOutput: false
+IOType: io_stream
+InputData: null
+InputShapes:
+  input_image:
+  - 32
+  - 32
+  - 3
+KerasModel: !keras_model 'keras_model.keras'
+OutputDir: .
+OutputPredictions: null
+OutputShapes:
+  layer29_out:
+  - 64
+Part: xczu4ev-sfvc784-1-i
+ProjectName: myproject
+Stamp: 6cfe7f1d
+Version: 1.0.0
+WriterConfig:
+  Namespace: null
+  TBOutputStream: both
+  WriteTar: false
+  WriteWeightsTxt: true

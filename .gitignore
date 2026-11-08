@@ -44,9 +44,14 @@ vivado*.str
 # Vivado / HLS generated (rebuild from notebooks + tcl)
 vivado_project/
 vivado_project.bak*/
+vivado_project_w1/
 notebooks/hls4ml_prj/
 notebooks/hls4ml_prj.bak*/
 notebooks/hls4ml_prj_v19_*/
+notebooks/hls4ml_prj_w1q6/myproject_prj/
+notebooks/hls4ml_prj_w1q6/tb_data/
+notebooks/hls4ml_prj_w1q6/*.log
+notebooks/hls4ml_prj_w1q6/keras_model.keras
 notebooks/model_int8_qkeras.h5.bak*
 
 # Run artifacts (regenerate via scripts)

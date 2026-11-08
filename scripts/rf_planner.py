@@ -61,6 +61,72 @@ def plan_balanced(L, p_budget, leq_only=True):
             best = (T, sel, ptot); break
     return best
 
+def choose_rf(layer, cap_cycles, overhead=1.38, leq_only=True):
+    """Largest legal RF whose padded stage stays inside cap_cycles. Minimises P."""
+    limit = cap_cycles / overhead
+    cands = []
+    for rf in layer["valid"]:
+        if leq_only and rf > layer["n_in"]:
+            continue
+        if layer["px"] * rf <= limit:
+            cands.append(rf)
+    if not cands:
+        return None
+    return max(cands)
+
+
+def estimate_width(channels, cap_cycles, overhead=1.38):
+    L = table(layers(channels))
+    rfs, rows = [], []
+    sum_p = params = 0
+    cin = 3
+    max_stage = 0
+    for layer, cout in zip(L, channels):
+        rf = choose_rf(layer, cap_cycles, overhead=overhead, leq_only=True)
+        if rf is None:
+            rf = choose_rf(layer, cap_cycles, overhead=overhead, leq_only=False)
+        if rf is None:
+            raise ValueError("%s has no legal RF under %d cycles" % (layer["name"], cap_cycles))
+        p = layer["n_in"] * layer["n_out"] // rf
+        stage = layer["px"] * rf
+        padded = int(round(stage * overhead))
+        max_stage = max(max_stage, padded)
+        params += cin * 9 * cout
+        cin = cout
+        sum_p += p
+        rfs.append(rf)
+        rows.append({
+            "name": layer["name"],
+            "n_in": layer["n_in"],
+            "n_out": layer["n_out"],
+            "rf": rf,
+            "P": p,
+            "stage_cycles": stage,
+            "padded_cycles": padded,
+            "branch": dense_variant(layer["n_in"], rf),
+        })
+    params += channels[-1] * 10
+    weight_bits = params * 6
+    bram18 = math.ceil(weight_bits / (18 * 1024))
+    return {
+        "channels": list(channels),
+        "cap_cycles": cap_cycles,
+        "overhead": overhead,
+        "rf": rfs,
+        "sumP": sum_p,
+        "max_padded_cycles": max_stage,
+        "max_padded_ms_at_149_9mhz": max_stage / 149.9136e3,
+        "params": params,
+        "macs": sum(layer["macs"] for layer in L),
+        "lut_if_165_each": 14000 + 165 * sum_p,
+        "dsp_if_one_each": sum_p,
+        "dsp_if_packed_2": math.ceil(sum_p / 2),
+        "weight_bits_q6": weight_bits,
+        "bram18_weights": bram18,
+        "layers": rows,
+    }
+
+
 def report(L, label, rfs):
     tot_p = tot_c = 0; mx = 0; rows = []
     for l, rf in zip(L, rfs):
@@ -77,7 +143,26 @@ if __name__ == "__main__":
     ap.add_argument("--widen", default=None, help="6 个通道数, 如 32,32,40,40,48,48")
     ap.add_argument("--crosscheck", action="store_true")
     ap.add_argument("--frontier", action="store_true", help="打印 面积(ΣP)-最大层周期 前沿；同时给出仅 RF<=n_in 家族的 ΣP 下限")
+    ap.add_argument("--v10", action="store_true", help="W1/W1.5/W2 under the 110k and 1 ms cycle caps")
     a = ap.parse_args()
+    if a.v10:
+        widths = {
+            "W1": (16, 16, 32, 32, 64, 64),
+            "W1.5": (24, 24, 48, 48, 96, 96),
+            "W2": (32, 32, 64, 64, 128, 128),
+        }
+        for name, ch in widths.items():
+            for cap in (110000, 145400):
+                est = estimate_width(ch, cap)
+                print(
+                    "%s cap=%d ΣP=%d LUT=%d DSP=%d packedDSP=%d BRAM18=%d max_ms=%.3f RF=%s"
+                    % (
+                        name, cap, est["sumP"], est["lut_if_165_each"], est["dsp_if_one_each"],
+                        est["dsp_if_packed_2"], est["bram18_weights"],
+                        est["max_padded_ms_at_149_9mhz"], est["rf"],
+                    )
+                )
+        raise SystemExit
     ch = tuple(int(x) for x in a.widen.split(",")) if a.widen else (16, 16, 20, 20, 24, 24)
     L = table(layers(ch))
     print("层参数:", [(l["name"], l["n_in"], l["n_out"], l["px"], l["macs"]) for l in L])

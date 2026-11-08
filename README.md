@@ -83,6 +83,7 @@ uint8 图像
 | 项 | 值 |
 |----|----|
 | HLS 顶层 | `myproject_axi` |
+| HLS 源码 | `notebooks/hls4ml_prj_w1q6/firmware` |
 | BD / IP | `system` / `cifar10_accel` |
 | DMA | Simple 模式，M_AXI 64-bit，DRE 关闭 |
 | HP0 | 加载后把 AFIFM 设为 64-bit（AR66295） |
@@ -91,6 +92,8 @@ uint8 图像
 | RC2 复用因子 | 27 / 36 / 144 / 90 / 180 / 216 |
 
 `scripts/v19_hls_config_common.py` 里的默认表是 A1'（27/144/144/180/180/216），不是 W1，也不是 RC2。做 RC2 的 HLS 转换前，先运行 `python3 scripts/opt_v2/set_rf.py --variant A2-L`。W1 用上面那一行复用因子，转换结束后把默认表改回去。
+
+板上这份网络的 HLS 源码在 `notebooks/hls4ml_prj_w1q6/firmware`。`parameters.h` 的通道是 16/16/32/32/64/64，六层复用因子是 27/72/144/288/288/576。`myproject_axi.cpp` 把 GAP 打成 64 个 32-bit AXI 字。权重常量在 `firmware/weights`。
 
 加载 bitstream 之后，HP0 经常仍是 32-bit。`scripts/board_load_only.sh` 会调用 `scripts/board_fix_hp0_width.py` 把它改成 64-bit。这一步不做，S2MM 会写成稀疏的洞。
 

@@ -24,6 +24,19 @@ VARIANTS = {
     # Wide net 32/32/40/40/48/48, sumP<=480. Only legal for that channel config.
     'B2-480': (27, 48, 144, 180, 360, 432),
     'B2-640': (27, 36, 144, 120, 360, 432),
+    # v10 widths. RF chosen for a 110k-cycle padded stage at 149.9 MHz.
+    'W1': (27, 72, 144, 288, 288, 576),
+    # conv3b reuse doubled after W1 placed at 61034 LUT, 1034 over the 60000 line.
+    'W1f': (27, 72, 144, 288, 288, 1152),
+    'W1.5': (27, 72, 216, 216, 432, 864),
+    'W2': (27, 72, 288, 288, 576, 1152),
+}
+
+CHANNELS = {
+    'W1': (16, 16, 32, 32, 64, 64),
+    'W1f': (16, 16, 32, 32, 64, 64),
+    'W1.5': (24, 24, 48, 48, 96, 96),
+    'W2': (32, 32, 64, 64, 128, 128),
 }
 
 
@@ -56,7 +69,12 @@ def apply(variant, dry_run=False):
     if variant not in VARIANTS:
         raise SystemExit('unknown variant %s; choose %s' % (variant, ', '.join(sorted(VARIANTS))))
     rfs = VARIANTS[variant]
-    channels = (32, 32, 40, 40, 48, 48) if variant.startswith('B2-') else (16, 16, 20, 20, 24, 24)
+    if variant in CHANNELS:
+        channels = CHANNELS[variant]
+    elif variant.startswith('B2-'):
+        channels = (32, 32, 40, 40, 48, 48)
+    else:
+        channels = (16, 16, 20, 20, 24, 24)
     check(rfs, channels)
     block = render(variant, rfs)
     text = CONFIG.read_text(encoding='utf-8')
